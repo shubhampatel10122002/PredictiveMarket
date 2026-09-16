@@ -78,7 +78,9 @@ const icons = {
   heartFill:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>',
   check:'<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   play:'<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M8 5v14l11-7z"/></svg>',
-  back:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>'
+  back:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+  up:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg>',
+  down:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 9l-7 7-7-7"/></svg>'
 };
 
 /* ============ data layer ============
@@ -165,26 +167,45 @@ function refresh(){
   if(current==="mine") renderMine();
 }
 
-/* ============ clip (simulated 60s video) ============ */
-function clipHTML(c){
-  return `<div class="stage" style="--cat:${CATS[c.cat].color}"></div>
-    <div class="segs">${c.beats.map(()=>'<div class="seg"><i></i></div>').join("")}</div>
-    <div class="clip-note">Clip preview for ${esc(c.ngo)}</div>
-    <div class="caption" aria-live="off"><p class="enter"><span>${esc(c.beats[0])}</span></p></div>
+/* ============ clip ============
+   Everything drawn on top of a clip lives inside `.frame`: the whole screen on
+   a phone, a centred 9:16 card on a laptop.
+   A case with no `video` is drawn as an animated caption card built from its
+   beats. Give a case `video:"<url>"` (and optionally `poster:"<url>"`) and the
+   real file plays in the same frame, with the progress bar and captions
+   following the video's own clock instead of the beat timer. */
+function clipHTML(c, inner=""){
+  const beats = c.beats || [];
+  const media = c.video
+    ? `<video class="vid" src="${esc(c.video)}"${c.poster?` poster="${esc(c.poster)}"`:""} playsinline muted loop preload="metadata"></video>`
+    : "";
+  return `<div class="frame">
+    <div class="stage" style="--cat:${CATS[c.cat].color}">${media}</div>
+    <div class="segs">${beats.map(()=>'<div class="seg"><i></i></div>').join("")}</div>
+    ${c.video?"":`<div class="clip-note">Clip preview for ${esc(c.ngo)}</div>`}
+    ${beats.length?`<div class="caption" aria-live="off"><p class="enter"><span>${esc(beats[0])}</span></p></div>`:""}
     <button class="tap" aria-label="Pause or play clip"></button>
-    <div class="pause-ico"><div>${icons.play}</div></div>`;
+    <div class="pause-ico"><div>${icons.play}</div></div>
+    ${inner}</div>`;
 }
 class Clip{
-  constructor(root, c){ this.root=root; this.c=c; this.t=0; this.beat=-1; this.playing=false; this.userPaused=false;
-    this.p=root.querySelector(".caption p"); this.segs=[...root.querySelectorAll(".seg i")]; this.stage=root.querySelector(".stage");
+  constructor(root, c){ this.root=root; this.c=c; this.beats=c.beats||[]; this.span=BEAT_MS*Math.max(1,this.beats.length);
+    this.t=0; this.beat=-1; this.playing=false; this.userPaused=false; this.last=performance.now();
+    this.p=root.querySelector(".caption p"); this.segs=[...root.querySelectorAll(".seg i")];
+    this.stage=root.querySelector(".stage"); this.video=root.querySelector("video");
     root.querySelector(".tap").addEventListener("click",()=>{ this.userPaused=!this.userPaused; this.userPaused?this.pause():this.play(); });
     this.show(0); }
-  show(i){ if(i===this.beat) return; this.beat=i; this.p.classList.remove("lit","enter"); this.p.firstChild.textContent=this.c.beats[i];
+  show(i){ if(!this.p || i===this.beat) return; this.beat=i; this.p.classList.remove("lit","enter"); this.p.firstChild.textContent=this.beats[i];
     void this.p.offsetWidth; this.p.classList.add("enter"); requestAnimationFrame(()=>requestAnimationFrame(()=>this.p.classList.add("lit"))); }
-  play(){ if(this.userPaused) return; this.playing=true; this.stage.classList.remove("paused"); this.last=performance.now(); }
-  pause(){ this.playing=false; this.stage.classList.add("paused"); }
-  tick(now){ if(!this.playing) return; this.t=(this.t+(now-this.last))%(BEAT_MS*this.c.beats.length); this.last=now;
-    const i=Math.floor(this.t/BEAT_MS); this.show(i);
+  play(){ if(this.userPaused) return; this.playing=true; this.stage.classList.remove("paused"); this.last=performance.now();
+    if(this.video) this.video.play().catch(()=>{}); }
+  pause(){ this.playing=false; this.stage.classList.add("paused"); if(this.video) this.video.pause(); }
+  tick(now){ if(!this.playing) return;
+    if(this.video && this.video.duration) this.t=this.video.currentTime/this.video.duration*this.span;
+    else this.t=(this.t+(now-this.last))%this.span;
+    this.last=now;
+    if(!this.beats.length) return;
+    const i=Math.min(this.beats.length-1, Math.floor(this.t/BEAT_MS)); this.show(i);
     this.segs.forEach((s,k)=>s.style.width=(k<i?100:k>i?0:((this.t-i*BEAT_MS)/BEAT_MS*100))+"%"); }
 }
 const clips = new Set();
@@ -196,23 +217,27 @@ const feedClips = {};
 function renderFeed(){
   feed.innerHTML = CASES.map(c=>`
   <article class="reel" data-id="${c.id}" aria-label="${esc(c.title)}">
-    ${clipHTML(c)}
-    <div class="topbar"><div class="wordmark">Launch<span>Justice</span></div><div class="demo-pill">Demo cases</div></div>
+    ${clipHTML(c, `
+      <div class="topbar"><div class="wordmark">Launch<span>Justice</span></div><div class="demo-pill">Demo cases</div></div>
+      <div class="meta" style="--cat:${CATS[c.cat].color}">
+        <div class="org"><span class="dot"></span>${esc(c.ngo)}</div>
+        <h2>${esc(c.title)}</h2>
+        <div class="vs">vs. ${esc(c.defendant)}</div>
+        <div class="bar"><i data-pct="${c.id}"></i></div>
+        <div class="nums"><span><b data-raised="${c.id}"></b> of ${usd(c.goal)}</span><span data-backers="${c.id}"></span></div>
+        <button class="more-btn" data-act="details">See the full case</button>
+      </div>`)}
     <div class="rail">
       <button data-act="pledge"><span class="ic pledge">${icons.pledge}</span>Pledge</button>
       <button data-act="discuss"><span class="ic">${icons.chat}</span><span data-ccount="${c.id}">0</span></button>
       <button data-act="details"><span class="ic">${icons.info}</span>Details</button>
       <button data-act="share"><span class="ic">${icons.share}</span>Share</button>
     </div>
-    <div class="meta" style="--cat:${CATS[c.cat].color}">
-      <div class="org"><span class="dot"></span>${esc(c.ngo)}</div>
-      <h2>${esc(c.title)}</h2>
-      <div class="vs">vs. ${esc(c.defendant)}</div>
-      <div class="bar"><i data-pct="${c.id}"></i></div>
-      <div class="nums"><span><b data-raised="${c.id}"></b> of ${usd(c.goal)}</span><span data-backers="${c.id}"></span></div>
-      <button class="more-btn" data-act="details">See the full case</button>
-    </div>
-  </article>`).join("");
+  </article>`).join("") + `
+  <div class="feednav">
+    <button data-step="-1" aria-label="Previous case">${icons.up}</button>
+    <button data-step="1" aria-label="Next case">${icons.down}</button>
+  </div>`;
   feed.querySelectorAll(".reel").forEach(el=>{
     const c = byId[el.dataset.id]; const clip = new Clip(el, c); feedClips[c.id]=clip; clips.add(clip);
     el.querySelectorAll("[data-act]").forEach(b=>b.addEventListener("click",()=>{
@@ -223,12 +248,15 @@ function renderFeed(){
       if(a==="share") shareCase(c);
     }));
   });
+  feed.querySelectorAll("[data-step]").forEach(b=>b.addEventListener("click",()=>stepFeed(+b.dataset.step)));
   const io = new IntersectionObserver(es=>es.forEach(e=>{
     const clip=feedClips[e.target.dataset.id];
     if(e.isIntersecting && e.intersectionRatio>.6 && current==="watch" && !sheetOpen) { activeFeed=e.target.dataset.id; clip.play(); } else clip.pause();
   }),{root:feed, threshold:[0,.6,1]});
   feed.querySelectorAll(".reel").forEach(el=>io.observe(el));
 }
+/* one clip per screen, so a step is always one viewport of the feed */
+function stepFeed(dir){ feed.scrollBy({top: dir*feed.clientHeight, behavior:"smooth"}); }
 let activeFeed = CASES[0].id;
 function feedPlay(on){ Object.entries(feedClips).forEach(([id,cl])=> (on && id===activeFeed) ? cl.play() : cl.pause()); }
 async function shareCase(c){
@@ -278,18 +306,21 @@ function openCase(id){
   <div class="dhero reel" data-id="${c.id}">${clipHTML(c)}
     <button class="back" id="backBtn">${icons.back}Back</button></div>
   <div class="dbody" style="--cat:${CATS[c.cat].color}">
-    <div class="case" style="border:0;padding:0;background:none;margin:0"><div class="cat"><span class="dot"></span>${CATS[c.cat].label}</div></div>
+    <div class="dcat"><span class="dot"></span>${CATS[c.cat].label}</div>
     <h1>${esc(c.title)}</h1>
-    <div style="color:var(--muted);font-size:15px">Brought by <b style="color:var(--ink)">${esc(c.ngo)}</b></div>
-    <div style="margin-top:18px"><span class="big" data-raised="${c.id}"></span> <span style="color:var(--muted)">pledged of ${usd(c.goal)}</span></div>
-    <div class="lbar" style="margin-top:8px;height:8px"><i data-pct="${c.id}"></i></div>
-    <div class="lnums"><span data-pctlabel="${c.id}"></span><span data-backers="${c.id}"></span></div>
-    <dl class="facts">
-      <div><dt>Defendant</dt><dd>${esc(c.defendant)}</dd></div>
-      <div><dt>Court</dt><dd>${esc(c.court)}</dd></div>
-      <div><dt>Stage</dt><dd>${esc(c.stage)}</dd></div>
-      <div><dt>Funding goal</dt><dd>${usd(c.goal)}</dd></div>
-    </dl>
+    <div class="byline">Brought by <b>${esc(c.ngo)}</b></div>
+    <div class="fund">
+      <div><span class="big" data-raised="${c.id}"></span> <span class="of">pledged of ${usd(c.goal)}</span></div>
+      <div class="lbar" style="margin-top:8px;height:8px"><i data-pct="${c.id}"></i></div>
+      <div class="lnums"><span data-pctlabel="${c.id}"></span><span data-backers="${c.id}"></span></div>
+      <dl class="facts">
+        <div><dt>Defendant</dt><dd>${esc(c.defendant)}</dd></div>
+        <div><dt>Court</dt><dd>${esc(c.court)}</dd></div>
+        <div><dt>Stage</dt><dd>${esc(c.stage)}</dd></div>
+        <div><dt>Funding goal</dt><dd>${usd(c.goal)}</dd></div>
+      </dl>
+      <button class="btn primary fund-cta">Pledge to this case</button>
+    </div>
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
       <button role="tab" data-tab="discussion" aria-selected="false">Discussion (<span data-ccount="${c.id}">0</span>)</button>
@@ -301,7 +332,7 @@ function openCase(id){
       <h4>Case timeline</h4>
       <ol class="tl">${c.timeline.map(([t,d,done])=>`<li class="${done?"done":""}">${esc(t)}<small>${esc(d)}</small></li>`).join("")}</ol>
       <h4>Updates from the legal team</h4>
-      ${c.updates.length? c.updates.map(([d,t])=>`<div class="prose" style="font-size:16px"><p><b style="font-family:var(--ui)">${esc(d)}</b><br>${esc(t)}</p></div>`).join("") : `<p style="color:var(--muted);font-size:15px">No updates yet. Backers will see new filings and rulings here.</p>`}
+      ${c.updates.length? c.updates.map(([d,t])=>`<div class="prose" style="font-size:16px"><p><b style="font-family:var(--ui)">${esc(d)}</b><br>${esc(t)}</p></div>`).join("") : `<p class="none">No updates yet. Backers will see new filings and rulings here.</p>`}
     </div>
     <div id="tab-discussion" hidden>${composerHTML(c.id)}<div data-comments="${c.id}"></div></div>
   </div>`;
@@ -314,6 +345,7 @@ function openCase(id){
   wireComposer(v, c.id);
   detailClip = new Clip(v.querySelector(".dhero"), c); clips.add(detailClip);
   $("#ctaBtn").onclick = ()=>openPledge(c.id);
+  v.querySelector(".fund-cta").addEventListener("click",()=>openPledge(c.id));
   v.scrollTop = 0;
   go("case");
   refresh();
@@ -367,7 +399,13 @@ function closeSheet(){
   lastFocus && lastFocus.focus && lastFocus.focus();
 }
 scrim.addEventListener("click",closeSheet);
-document.addEventListener("keydown",e=>{ if(e.key==="Escape" && sheetOpen) closeSheet(); });
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape" && sheetOpen){ closeSheet(); return; }
+  if(sheetOpen || current!=="watch") return;
+  const tag = (e.target.tagName||"").toLowerCase();
+  if(tag==="input" || tag==="textarea") return;
+  if(e.key==="ArrowDown" || e.key==="ArrowUp"){ e.preventDefault(); stepFeed(e.key==="ArrowDown"?1:-1); }
+});
 const getName = ()=> (ls("lj_name")||"").trim();
 
 function openNameThen(cb){
