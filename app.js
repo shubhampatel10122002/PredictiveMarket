@@ -69,6 +69,25 @@ function ls(k, v){ try{ if(v===undefined) return localStorage.getItem(k); localS
 let deviceId = ls("lj_device");
 if(!deviceId){ deviceId = "d:"+Math.random().toString(36).slice(2,10); ls("lj_device",deviceId); }
 else if(!deviceId.startsWith("d:")){ deviceId = "d:"+deviceId.replace(/^d/,""); ls("lj_device",deviceId); }
+/* A confirmation or Google link can come back with an error in the URL instead
+   of a session: expired, already used, or cancelled. Read it before the
+   Supabase client has a chance to clear the hash, and say so rather than
+   dropping the person on a silent signed-out screen. */
+const urlAuthError = (() => {
+  const inHash = (location.hash || "").slice(1).includes("error");
+  const raw = inHash ? location.hash.slice(1) : (location.search || "").slice(1);
+  if(!raw || !raw.includes("error")) return null;
+  const q = new URLSearchParams(raw);
+  const code = q.get("error_code") || q.get("error") || "";
+  const desc = (q.get("error_description") || "").replace(/\+/g, " ");
+  if(!code && !desc) return null;
+  /* drop just the part that carried the error, so a deep link survives */
+  history.replaceState(null, "", location.pathname + (inHash ? location.search : ""));
+  if(code.includes("otp_expired")) return "That email link has expired. Create the account again to get a fresh one.";
+  if(code.includes("access_denied")) return "That link didn't work \u2014 it may already have been used.";
+  return desc || "Signing in didn't complete. Try again.";
+})();
+
 const toastEl = $("#toast"); let toastT;
 function toast(m){ toastEl.textContent=m; toastEl.classList.add("on"); clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove("on"),2200); }
 const icons = {
@@ -170,6 +189,7 @@ async function initDb(){
   }
   auth.ready = true;
   renderAccount();
+  if(urlAuthError && !signedIn()) openAuth("in", urlAuthError);
 }
 
 /* Every write carries the actor, and the account id when there is one. The
@@ -588,7 +608,7 @@ function authMessage(err, mode){
   return (mode === "up" ? "Couldn't create the account. " : "Couldn't sign in. ") + (err && err.message ? err.message : "Try again.");
 }
 
-function openAuth(mode){
+function openAuth(mode, initialError){
   if(!sb){ toast("Add your Supabase keys to config.js to enable accounts"); return; }
   const up = mode === "up";
   openSheet(`
@@ -611,6 +631,7 @@ function openAuth(mode){
                        :`New here? <button class="link" id="aSwap">Create an account</button>`}</p>`);
 
   const err = $("#aErr"), go = $("#aGo");
+  if(initialError) err.textContent = initialError;
   $("#aSwap").addEventListener("click", ()=>openAuth(up?"in":"up"));
 
   $("#gGo").addEventListener("click", async ()=>{

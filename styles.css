@@ -35,11 +35,11 @@ img{max-width:100%}
 .nav-foot{display:none}
 .nav{display:flex;border-top:1px solid var(--line);background:var(--surface);padding-bottom:env(safe-area-inset-bottom)}
 .nav.dark{background:var(--feed);border-color:#223042}
-.nav button{flex:1;background:none;border:0;padding:10px 0 12px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:12px;font-weight:500;color:var(--muted)}
-.nav.dark button{color:#8C99AA}
-.nav button[aria-current="page"]{color:var(--ink)}
-.nav.dark button[aria-current="page"]{color:#fff}
-.nav svg{width:22px;height:22px}
+.nav>button{flex:1;background:none;border:0;padding:10px 0 12px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:12px;font-weight:500;color:var(--muted)}
+.nav.dark>button{color:#8C99AA}
+.nav>button[aria-current="page"]{color:var(--ink)}
+.nav.dark>button[aria-current="page"]{color:#fff}
+.nav>button svg{width:22px;height:22px}
 
 /* highlighter */
 .mark{background:linear-gradient(transparent 58%, var(--hl-soft) 58%, var(--hl-soft) 92%, transparent 92%);padding:0 2px;-webkit-box-decoration-break:clone;box-decoration-break:clone}
@@ -286,10 +286,10 @@ label.f{display:block;font-size:14px;font-weight:600;margin:14px 0 6px}
   /* bottom bar becomes a sidebar */
   .nav,.nav.dark{flex:none;order:-1;width:236px;flex-direction:column;align-items:stretch;gap:2px;
     padding:20px 12px;border-top:0;border-right:1px solid var(--line);background:var(--surface)}
-  .nav button,.nav.dark button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;
+  .nav>button,.nav.dark>button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;
     padding:11px 12px;border-radius:12px;font-size:15px;font-weight:600;color:var(--muted)}
-  .nav button[aria-current="page"],.nav.dark button[aria-current="page"]{color:var(--ink);background:var(--chip)}
-  .nav svg{width:24px;height:24px}
+  .nav>button[aria-current="page"],.nav.dark>button[aria-current="page"]{color:var(--ink);background:var(--chip)}
+  .nav>button svg{width:24px;height:24px}
   .brand{display:block;padding:10px 12px 20px}
   .nav-foot{display:block;margin-top:auto;padding:14px 12px 4px;border-top:1px solid var(--line)}
   .nav-foot .acct-btns{flex-direction:column}
@@ -345,7 +345,7 @@ label.f{display:block;font-size:14px;font-weight:600;margin:14px 0 6px}
 /* ---------- pointer affordances (laptops, not touch) ---------- */
 @media (hover:hover) and (pointer:fine){
   .case:hover{border-color:var(--muted)}
-  .nav button:hover{color:var(--ink)}
+  .nav>button:hover{color:var(--ink)}
   .chip:hover{border-color:var(--muted)}
   .prow:hover .t{text-decoration:underline}
   .feednav button:hover{background:rgba(255,255,255,.26)}

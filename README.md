@@ -82,27 +82,92 @@ nothing is lost by pledging first and signing up later.
 
 ### Dashboard settings you still have to make
 
-The schema is applied, but four things live in Supabase's settings rather than
-in SQL, so they have to be switched on by hand in the dashboard:
+The schema is applied, but sign-in depends on things that live in Supabase's
+settings rather than in SQL.
 
-1. **Google sign-in.** Authentication → Sign In / Providers → Google. Enable it
-   and paste a Client ID and Secret from a Google Cloud OAuth client. Supabase
-   shows you a callback URL — add that to **Authorised redirect URIs** on the
-   Google side. Until this is done the Google button reports that it isn't
-   switched on; email sign-up works regardless.
-2. **Redirect URLs.** Authentication → URL Configuration. Set the Site URL to
-   the deployed address and add every origin the app runs on, including
-   `http://localhost:3000` (or whichever port you serve it from), otherwise
-   Google sends people back to the wrong place.
-3. **Email confirmation.** Authentication → Sign In / Providers → Email. With
-   "Confirm email" on (the default) a new account has to click a link before it
-   can sign in, and the app shows a "Confirm your email" screen. For an internal
-   demo it is usually less friction to turn it off, which signs people straight
-   in.
-4. **SMTP, if you leave confirmation on.** Supabase's built-in email sender is
-   rate limited to a handful of messages an hour and is not meant for real use.
-   Wire up your own SMTP (Resend, Postmark, SES) before inviting the board,
-   or turn confirmation off for the demo.
+#### 1. Redirect URLs — fix this first
+
+A confirmation link that lands on `localhost refused to connect` almost always
+means the same thing: Supabase will only send people back to an address on its
+allow-list, and when the address it was asked for isn't on that list it falls
+back to the **Site URL**, which on a new project is `http://localhost:3000`.
+Nothing is running there, so Chrome shows `ERR_CONNECTION_REFUSED`.
+
+Authentication → URL Configuration:
+
+- **Site URL** — the address the app really lives at. Once it is deployed, use
+  the deployed address. This is the fallback, so make it somewhere that is
+  always up.
+- **Redirect URLs** — add every origin the app is opened from, each with a
+  wildcard path, for example `https://launchjustice.vercel.app/**` and
+  `http://localhost:8000/**`. The port has to match the one you serve from;
+  `python3 -m http.server 8000` is port 8000, not 3000.
+
+Two things worth knowing while testing:
+
+- Opening `index.html` as a `file://` path can never work for sign-in. Serve it
+  over http, even locally.
+- A confirmation link is single use and expires (an hour by default), so a link
+  from an earlier attempt will fail even after the settings are right. Sign up
+  again to get a fresh one. The app now names the reason instead of showing a
+  blank signed-out screen.
+
+#### 2. Email from no-reply@peoplemachine.com
+
+Supabase's built-in sender is for development only: it sends from a Supabase
+address and is rate limited to a couple of messages an hour, shared across the
+whole project. It cannot be made to send as your domain. For your own address
+you need your own SMTP provider.
+
+Pick a transactional email provider — Resend is the least work, Postmark has
+the best deliverability record, Amazon SES is the cheapest at volume. Then:
+
+1. **Add `peoplemachine.com` as a sending domain** in the provider and add the
+   DNS records it gives you. There are normally three: a DKIM signing key, an
+   SPF record, and a `MX`/return-path record. Providers usually put the SPF and
+   return-path on a subdomain such as `send.peoplemachine.com` precisely so they
+   do not disturb whatever already delivers your normal company mail — but read
+   what yours asks for rather than assuming. If `peoplemachine.com` already
+   sends mail through Google Workspace or similar, do not replace the existing
+   SPF record; a domain may only have one, and the entries have to be merged.
+2. **Wait for the domain to verify.** DNS can take minutes to hours. The
+   provider will not issue credentials until it does.
+3. **Add a DMARC record** if the domain does not have one
+   (`_dmarc.peoplemachine.com`, starting at `v=DMARC1; p=none;`). Gmail and
+   Yahoo require it for bulk senders and it improves inbox placement either way.
+4. **Put the credentials into Supabase.** Project Settings → Authentication →
+   SMTP Settings → enable Custom SMTP. Fill in the provider's host and port
+   (587 with STARTTLS is the usual choice), the username and password it issued,
+   and set **Sender email** to `no-reply@peoplemachine.com` and **Sender name**
+   to whatever should appear in the inbox.
+5. **Raise the email rate limit.** Authentication → Rate Limits. The default is
+   deliberately tiny for the built-in sender; with your own SMTP it can go up to
+   whatever your provider allows. Leaving it at the default is the usual reason
+   invitations mysteriously stop arriving partway through a round of testing.
+6. **Send a test.** Sign up with a real address and confirm it arrives from
+   `no-reply@peoplemachine.com`, not from Supabase.
+
+While you are there, Authentication → Email Templates is worth a pass: the
+default confirmation email says "Supabase" and is the first thing a backer sees.
+
+#### 3. Email confirmation, on or off
+
+Authentication → Sign In / Providers → Email. With **Confirm email** on (the
+default) a new account has to click a link before it can sign in, and the app
+shows a "Confirm your email" screen. Turning it off signs people straight in and
+removes email from the critical path entirely — reasonable for an internal demo,
+and the setting is independent of the SMTP work above, which is also used for
+password resets and future invitations.
+
+#### 4. Google sign-in
+
+Authentication → Sign In / Providers → Google. Enable it and paste a Client ID
+and Secret from a Google Cloud OAuth client. Supabase shows a callback URL of
+the form `https://<project>.supabase.co/auth/v1/callback` — add exactly that to
+**Authorised redirect URIs** on the Google side. The redirect URLs from step 1
+have to be right as well, or Google will return people to the wrong place.
+Until this is done the Google button says it isn't switched on; email sign-up
+works regardless.
 
 Password reset is not built yet: someone who forgets a password needs a new
 account, or a reset from the dashboard.
