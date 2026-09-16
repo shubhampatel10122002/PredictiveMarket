@@ -44,9 +44,18 @@ Dark mode follows the operating system setting at every size.
 
 ## Deploy on Vercel
 
-1. Push this folder to GitHub.
-2. In Vercel, choose **Add New → Project**, import the repo, and keep the framework preset as **Other**. No build command is needed.
-3. Deploy. Every push to `main` redeploys automatically.
+The app is live at **https://predictive-market-eta.vercel.app**, served by the
+Vercel project `predictive-market`, which is linked to this GitHub repository.
+
+Because there is nothing on the default branch yet, Vercel's **Production
+Branch** is set to the feature branch the work happens on rather than to `main`.
+Every push to that branch redeploys production; a push to any other branch gets
+a preview URL instead and leaves the live site alone. Check which branch is
+current under Project Settings → Git before assuming a push went live.
+
+Setting it up from scratch: push the folder to GitHub, choose **Add New →
+Project** in Vercel, import the repo, keep the framework preset as **Other**,
+and leave the build command empty. There is nothing to build.
 
 ## Data modes
 
@@ -95,12 +104,21 @@ Nothing is running there, so Chrome shows `ERR_CONNECTION_REFUSED`.
 
 Authentication → URL Configuration:
 
-- **Site URL** — the address the app really lives at. Once it is deployed, use
-  the deployed address. This is the fallback, so make it somewhere that is
-  always up.
+- **Site URL** — the address the app really lives at, which is now
+  `https://predictive-market-eta.vercel.app`. This is the fallback used whenever
+  a link asks to return somewhere that is not on the allow-list, so it has to be
+  somewhere that is always up. A new project ships with `http://localhost:3000`
+  here, which is exactly what produces the refused connection.
 - **Redirect URLs** — add every origin the app is opened from, each with a
-  wildcard path, for example `https://launchjustice.vercel.app/**` and
-  `http://localhost:8000/**`. The port has to match the one you serve from;
+  wildcard path:
+
+      https://predictive-market-eta.vercel.app/**
+      https://*-shubhampatel12012002-8127s-projects.vercel.app/**
+      http://localhost:8000/**
+
+  The second line covers Vercel's preview deployments, which get a fresh
+  hostname per push and would otherwise fall back to the Site URL. The third is
+  for local work, and the port has to match the one you serve from;
   `python3 -m http.server 8000` is port 8000, not 3000.
 
 Three things worth knowing while testing:
@@ -159,6 +177,25 @@ the best deliverability record, Amazon SES is the cheapest at volume. Then:
 6. **Send a test.** Sign up with a real address and confirm it arrives from
    `no-reply@peoplemachine.com`, not from Supabase.
 
+**A new provider account is usually restricted until it is approved.** Postmark,
+for one, will only deliver to addresses on your own domain while approval is
+pending, so a test to a gmail address fails even though everything is configured
+correctly. That failure is visible: the SMTP rejection makes `/signup` fail
+rather than fail silently, so the app shows an error instead of the "Confirm
+your email" screen, and the auth logs carry the provider's reason. Until
+approval comes through, test with an address at the sending domain.
+
+Whether custom SMTP is really in use is easy to check in the auth logs without
+sending anything. Saving SMTP settings restarts the auth service and writes a
+line raising the email rate limit away from the built-in sender's tiny default:
+
+    select timestamp, log_attributes['msg'] as msg from logs
+    where source = 'auth_logs' and log_attributes['msg'] like '%RATE_LIMIT_EMAIL%'
+    order by timestamp desc;
+
+A `mail.send` line with a timestamp *earlier* than that restart came from
+Supabase's built-in sender, not from yours.
+
 While you are there, Authentication → Email Templates is worth a pass: the
 default confirmation email says "Supabase" and is the first thing a backer sees.
 
@@ -173,13 +210,32 @@ password resets and future invitations.
 
 #### 4. Google sign-in
 
-Authentication → Sign In / Providers → Google. Enable it and paste a Client ID
-and Secret from a Google Cloud OAuth client. Supabase shows a callback URL of
-the form `https://<project>.supabase.co/auth/v1/callback` — add exactly that to
-**Authorised redirect URIs** on the Google side. The redirect URLs from step 1
-have to be right as well, or Google will return people to the wrong place.
-Until this is done the Google button says it isn't switched on; email sign-up
-works regardless.
+The provider is off, so the **Continue with Google** button is not drawn at all.
+A browser cannot find out whether a provider is enabled without asking for a
+redirect, and asking while it is off answers 400 `provider is not enabled`,
+which reaches the person as a button that does nothing useful. So the button is
+behind `GOOGLE_SIGN_IN` in `config.js`, currently `false`. The sign-in code
+itself is written and unchanged; the flag only decides whether it is offered.
+
+To switch it on:
+
+1. In Google Cloud Console, create a project and configure the OAuth consent
+   screen (External, with an app name, a support email and a developer contact).
+2. Create credentials of type **OAuth client ID**, application type **Web
+   application**.
+3. Under **Authorised redirect URIs** add exactly:
+
+       https://aghqvulngojxdkwsrcax.supabase.co/auth/v1/callback
+
+   This is Supabase's callback, not the app's. Google returns to Supabase, and
+   Supabase then returns to whichever app address it was asked for, which is why
+   the redirect URLs in step 1 have to be right as well.
+4. Copy the Client ID and Client Secret into Supabase under Authentication →
+   Sign In / Providers → Google, and enable the provider. Keep the secret out
+   of this repository: it belongs in Supabase only.
+5. Set `GOOGLE_SIGN_IN: true` in `config.js` and push.
+
+Email sign-up works regardless of any of this.
 
 Password reset is not built yet: someone who forgets a password needs a new
 account, or a reset from the dashboard.
