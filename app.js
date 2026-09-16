@@ -66,7 +66,9 @@ const esc = s => String(s??"").replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;","
 const usd = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(n);
 const ago = t => { const s=(Date.now()-t)/1000; if(s<60) return "just now"; if(s<3600) return Math.floor(s/60)+"m"; if(s<86400) return Math.floor(s/3600)+"h"; return Math.floor(s/86400)+"d"; };
 function ls(k, v){ try{ if(v===undefined) return localStorage.getItem(k); localStorage.setItem(k,v);}catch(e){ return null; } }
-let deviceId = ls("lj_device"); if(!deviceId){ deviceId = "d"+Math.random().toString(36).slice(2,10); ls("lj_device",deviceId); }
+let deviceId = ls("lj_device");
+if(!deviceId){ deviceId = "d:"+Math.random().toString(36).slice(2,10); ls("lj_device",deviceId); }
+else if(!deviceId.startsWith("d:")){ deviceId = "d:"+deviceId.replace(/^d/,""); ls("lj_device",deviceId); }
 const toastEl = $("#toast"); let toastT;
 function toast(m){ toastEl.textContent=m; toastEl.classList.add("on"); clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove("on"),2200); }
 const icons = {
@@ -80,12 +82,30 @@ const icons = {
   play:'<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M8 5v14l11-7z"/></svg>',
   back:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
   up:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg>',
-  down:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 9l-7 7-7-7"/></svg>'
+  down:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 9l-7 7-7-7"/></svg>',
+  google:'<svg viewBox="0 0 18 18" width="18" height="18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.46 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>',
+  signout:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>'
 };
 
+/* ============ accounts ============
+   Accounts are optional. A signed-out visitor acts as their browser
+   ("d:<random>"), a signed-in one acts as their account ("u:<uuid>"), and
+   actorId() is the single key the rest of the app uses for "mine" and for
+   one-like-per-person. The database enforces that pairing: the anon role can
+   only write signed-out rows, and a signed-in role can only write rows
+   stamped with its own id. */
+const auth = { session:null, profile:null, ready:false };
+const signedIn = () => !!auth.session;
+const myUserId = () => auth.session ? auth.session.user.id : null;
+const actorId  = () => signedIn() ? "u:"+myUserId() : deviceId;
+/* pledges made on this browser before signing in still count as yours */
+const myActors = () => signedIn() ? [actorId(), deviceId] : [deviceId];
+const myAvatar = () => (signedIn() && auth.profile) ? (auth.profile.avatar_url||null) : null;
+const myEmail  = () => signedIn() ? (auth.session.user.email||"") : "";
+
 /* ============ data layer ============
-   Shared mode: Supabase, when SUPABASE_URL and SUPABASE_ANON_KEY are set in config.js.
-   Local mode: pledges and comments are saved in this browser only. */
+   Shared mode: Supabase, when SUPABASE_URL and SUPABASE_ANON_KEY are set in
+   config.js. Local mode: saved in this browser only, and accounts are off. */
 const store = { pledges:[], comments:[], live:false };
 let sb = null;
 function loadLocal(){ try{ const d = JSON.parse(ls("lj_local")||"{}"); store.pledges=d.pledges||[]; store.comments=d.comments||[]; }catch(e){} }
@@ -95,25 +115,49 @@ loadLocal();
 const CFG = window.LJ_CONFIG || {};
 async function fetchAll(){
   const [p, c, l] = await Promise.all([
-    sb.from("pledges").select("id, case_id, display_name, amount, device_id, created_at").order("created_at",{ascending:true}).limit(5000),
-    sb.from("comments").select("*").order("created_at",{ascending:false}).limit(2000),
-    sb.from("comment_likes").select("comment_id, device_id").limit(10000)
+    sb.from("pledges").select("id, case_id, display_name, amount, actor_id, user_id, created_at").order("created_at",{ascending:true}).limit(5000),
+    sb.from("comments").select("id, case_id, name, avatar_url, body, is_backer, actor_id, user_id, created_at").order("created_at",{ascending:false}).limit(2000),
+    sb.from("comment_likes").select("comment_id, actor_id").limit(10000)
   ]);
   if(p.error || c.error || l.error) throw (p.error||c.error||l.error);
   const likes = {};
-  l.data.forEach(r=>{ (likes[r.comment_id] ||= {})[r.device_id] = true; });
-  store.pledges = p.data.map(r=>({id:r.id, caseId:r.case_id, name:r.display_name, displayName:r.display_name, amount:+r.amount, createdAt:Date.parse(r.created_at), deviceId:r.device_id}));
-  store.comments = c.data.map(r=>({id:r.id, caseId:r.case_id, name:r.name, text:r.body, backer:r.is_backer, createdAt:Date.parse(r.created_at), deviceId:r.device_id, likes:likes[r.id]||{}}));
+  l.data.forEach(r=>{ (likes[r.comment_id] ||= {})[r.actor_id] = true; });
+  store.pledges = p.data.map(r=>({id:r.id, caseId:r.case_id, name:r.display_name, displayName:r.display_name, amount:+r.amount, createdAt:Date.parse(r.created_at), actorId:r.actor_id, userId:r.user_id}));
+  store.comments = c.data.map(r=>({id:r.id, caseId:r.case_id, name:r.name, avatar:r.avatar_url, text:r.body, backer:r.is_backer, createdAt:Date.parse(r.created_at), actorId:r.actor_id, userId:r.user_id, likes:likes[r.id]||{}}));
   store.live = true;
   refresh();
 }
 let refetchT;
 const scheduleFetch = () => { clearTimeout(refetchT); refetchT = setTimeout(()=>fetchAll().catch(console.error), 250); };
 
+async function loadProfile(){
+  auth.profile = null;
+  if(!sb || !auth.session) return;
+  try{
+    const {data} = await sb.from("profiles").select("id, display_name, avatar_url").eq("id", myUserId()).maybeSingle();
+    auth.profile = data || null;
+  }catch(e){ console.error("Couldn't load profile", e); }
+}
+
 async function initDb(){
-  if(!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase)) { refresh(); return; }
+  if(!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase)) { refresh(); renderAccount(); return; }
   try{
     sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
+    const {data:{session}} = await sb.auth.getSession();
+    auth.session = session || null;
+    await loadProfile();
+    /* fires on sign in, sign out, token refresh, and on the way back from Google */
+    sb.auth.onAuthStateChange(async (event, s)=>{
+      const before = myUserId();
+      auth.session = s || null;
+      await loadProfile();
+      renderAccount(); refresh();
+      if(myUserId() !== before){
+        scheduleFetch();
+        if(auth.ready && event === "SIGNED_IN") toast("Signed in as "+getName());
+        if(auth.ready && event === "SIGNED_OUT") toast("Signed out");
+      }
+    });
     await fetchAll();
     sb.channel("lj-live")
       .on("postgres_changes",{event:"*",schema:"public",table:"pledges"},scheduleFetch)
@@ -124,28 +168,35 @@ async function initDb(){
     console.error("Supabase unavailable, using local mode", e);
     sb = null; store.live = false; loadLocal(); refresh();
   }
+  auth.ready = true;
+  renderAccount();
 }
+
+/* Every write carries the actor, and the account id when there is one. The
+   database rejects any mismatch, so this is a convenience, not the guard. */
+const stamp = () => ({actor_id: actorId(), user_id: myUserId()});
 
 async function addPledge(p){
   if(sb){
-    const {error} = await sb.from("pledges").insert({case_id:p.caseId, name:p.name, display_name:p.displayName, amount:p.amount, note:p.note||null, device_id:p.deviceId});
+    const {error} = await sb.from("pledges").insert({case_id:p.caseId, name:p.name, display_name:p.displayName, amount:p.amount, note:p.note||null, ...stamp()});
     if(error) throw error; scheduleFetch();
-  } else { store.pledges.push({id:"l"+Date.now(), ...p}); saveLocal(); refresh(); }
+  } else { store.pledges.push({id:"l"+Date.now(), ...p, actorId:actorId(), userId:null}); saveLocal(); refresh(); }
 }
 async function addComment(c){
   if(sb){
-    const {error} = await sb.from("comments").insert({case_id:c.caseId, name:c.name, body:c.text, is_backer:!!c.backer, device_id:c.deviceId});
+    const {error} = await sb.from("comments").insert({case_id:c.caseId, name:c.name, avatar_url:myAvatar(), body:c.text, is_backer:!!c.backer, ...stamp()});
     if(error) throw error; scheduleFetch();
-  } else { store.comments.push({id:"l"+Date.now(), ...c}); saveLocal(); refresh(); }
+  } else { store.comments.push({id:"l"+Date.now(), ...c, actorId:actorId(), userId:null, avatar:myAvatar()}); saveLocal(); refresh(); }
 }
 async function toggleLike(cm){
-  const on = !(cm.likes && cm.likes[deviceId]);
+  const me = actorId();
+  const on = !(cm.likes && cm.likes[me]);
   if(sb){
     const q = on
-      ? sb.from("comment_likes").upsert({comment_id:cm.id, device_id:deviceId})
-      : sb.from("comment_likes").delete().eq("comment_id",cm.id).eq("device_id",deviceId);
+      ? sb.from("comment_likes").upsert({comment_id:cm.id, ...stamp()})
+      : sb.from("comment_likes").delete().eq("comment_id",cm.id).eq("actor_id",me);
     const {error} = await q; if(error) throw error; scheduleFetch();
-  } else { cm.likes = {...(cm.likes||{}), [deviceId]:on}; saveLocal(); refresh(); }
+  } else { cm.likes = {...(cm.likes||{}), [me]:on}; saveLocal(); refresh(); }
 }
 
 const pledgesFor = id => store.pledges.filter(p=>p.caseId===id);
@@ -154,6 +205,7 @@ const raised = c => c.baseRaised + pledgesFor(c.id).reduce((s,p)=>s+(+p.amount||
 const backers = c => c.baseBackers + pledgesFor(c.id).length;
 const pct = c => Math.min(100, Math.round(raised(c)/c.goal*100));
 const likeCount = cm => Object.values(cm.likes||{}).filter(Boolean).length;
+const backedByMe = id => { const mine = myActors(); return pledgesFor(id).some(p=>mine.includes(p.actorId)); };
 
 /* live stat bindings — update in place so the feed never re-renders */
 function refresh(){
@@ -366,7 +418,7 @@ function wireComposer(root, id){
     if(!name){ openNameThen(()=>btn.click()); return; }
     btn.disabled=true; err.textContent="";
     try{
-      await addComment({caseId:id, name, text, createdAt:Date.now(), deviceId, backer: pledgesFor(id).some(p=>p.deviceId===deviceId), likes:{}});
+      await addComment({caseId:id, name, text, createdAt:Date.now(), backer: backedByMe(id), likes:{}});
       ta.value=""; toast("Comment posted");
     }catch(e){ err.textContent = "Couldn't post. Check your connection and try again."; }
     btn.disabled=false;
@@ -375,8 +427,11 @@ function wireComposer(root, id){
 function renderComments(el, id){
   const list = commentsFor(id);
   el.innerHTML = list.length ? list.map(cm=>{
-    const mine = cm.likes && cm.likes[deviceId];
-    return `<div class="cmt"><div class="av">${esc((cm.name||"?").trim().charAt(0).toUpperCase())}</div><div style="flex:1;min-width:0">
+    const mine = cm.likes && cm.likes[actorId()];
+    const face = cm.avatar
+      ? `<img class="av av-img" src="${esc(cm.avatar)}" alt="" referrerpolicy="no-referrer" loading="lazy">`
+      : `<div class="av">${esc((cm.name||"?").trim().charAt(0).toUpperCase())}</div>`;
+    return `<div class="cmt">${face}<div style="flex:1;min-width:0">
       <div class="top"><b>${esc(cm.name)}</b>${cm.backer?'<span class="badge">Backer</span>':""} <span>${ago(cm.createdAt)}</span></div>
       <p>${esc(cm.text)}</p>
       <button class="like" data-like="${esc(cm.id)}" aria-pressed="${!!mine}">${mine?icons.heartFill:icons.heart}Stand with this <span>${likeCount(cm)||""}</span></button>
@@ -406,13 +461,19 @@ document.addEventListener("keydown",e=>{
   if(tag==="input" || tag==="textarea") return;
   if(e.key==="ArrowDown" || e.key==="ArrowUp"){ e.preventDefault(); stepFeed(e.key==="ArrowDown"?1:-1); }
 });
-const getName = ()=> (ls("lj_name")||"").trim();
+/* Signed in, your name is the profile's; signed out, it is whatever you last
+   typed on this browser. Only the signed-out one is worth remembering here. */
+const getName = ()=> signedIn()
+  ? ((auth.profile && auth.profile.display_name) || myEmail().split("@")[0] || "")
+  : (ls("lj_name")||"").trim();
+const rememberName = n => { if(!signedIn()) ls("lj_name", n); };
 
 function openNameThen(cb){
   openSheet(`<h2 id="sheetTitle">What should we call you?</h2><p class="sub">No account needed. Your name shows next to your comments.</p>
     <input class="inp" id="nm" maxlength="40" autocomplete="name" placeholder="Your name">
+    ${sb?`<p class="hint">Or <button class="link" data-auth="in">sign in</button> instead.</p>`:""}
     <div class="err" id="nmErr"></div><button class="btn primary" id="nmGo" style="margin-top:8px">Continue</button>`);
-  $("#nmGo").onclick=()=>{ const n=$("#nm").value.trim(); if(!n){ $("#nmErr").textContent="Enter a name to continue."; return; } ls("lj_name",n); closeSheet(); cb(); };
+  $("#nmGo").onclick=()=>{ const n=$("#nm").value.trim(); if(!n){ $("#nmErr").textContent="Enter a name to continue."; return; } rememberName(n); closeSheet(); cb(); };
 }
 
 function openPledge(id){
@@ -421,6 +482,7 @@ function openPledge(id){
   <p class="sub">${esc(c.title)}</p>
   <label class="f" for="pName">Your name</label>
   <input class="inp" id="pName" maxlength="40" autocomplete="name" value="${esc(getName())}" placeholder="First and last name">
+  ${signedIn()?"":`<p class="hint">Pledging as a guest. <button class="link" data-auth="in">Sign in</button> and your pledges follow you to any device.</p>`}
   <label class="f" id="amtLbl">Amount</label>
   <div class="amts" role="group" aria-labelledby="amtLbl">${[25,50,100,250].map(a=>`<button data-a="${a}" aria-pressed="${a===amt}">$${a}</button>`).join("")}</div>
   <div class="money" style="margin-top:8px"><span>$</span><input class="inp" id="pAmt" inputmode="numeric" placeholder="Other amount" aria-label="Other amount"></div>
@@ -443,10 +505,10 @@ function openPledge(id){
     const name=$("#pName").value.trim(), err=$("#pErr");
     if(!name){ err.textContent="Enter your name so the NGO knows who pledged."; $("#pName").focus(); return; }
     if(!(amt>=1)){ err.textContent="Choose an amount or enter one of at least $1."; return; }
-    ls("lj_name",name); goBtn.disabled=true; err.textContent="";
+    rememberName(name); goBtn.disabled=true; err.textContent="";
     const pub = $("#pPublic").checked;
     try{
-      await addPledge({caseId:id, name, displayName: pub?name:"Anonymous backer", amount:amt, note:$("#pNote").value.trim(), createdAt:Date.now(), deviceId});
+      await addPledge({caseId:id, name, displayName: pub?name:"Anonymous backer", amount:amt, note:$("#pNote").value.trim(), createdAt:Date.now()});
       pledgeDone(c, amt);
     }catch(e){
       goBtn.disabled=false;
@@ -471,12 +533,146 @@ function openDiscuss(id){
   wireComposer(sheet, id); refresh();
 }
 
+/* ============ account UI ============
+   Two entry points, one renderer: a block at the foot of the laptop sidebar,
+   and a card in My pledges for the sizes that have no sidebar. */
+function accountHTML(){
+  if(!sb) return `<div class="acct"><p class="acct-note">${
+    (!auth.ready && CFG.SUPABASE_URL) ? "Connecting&hellip;" : "Accounts need Supabase. See the README."
+  }</p></div>`;
+  if(signedIn()){
+    const n = getName(), a = myAvatar();
+    return `<div class="acct in">
+      <div class="who">
+        ${a?`<img class="av av-img" src="${esc(a)}" alt="" referrerpolicy="no-referrer">`
+           :`<div class="av">${esc((n||"?").trim().charAt(0).toUpperCase())}</div>`}
+        <div class="nm"><b>${esc(n)}</b><small>${esc(myEmail())}</small></div>
+      </div>
+      <button class="btn ghost sm" data-auth="out">${icons.signout}Sign out</button>
+    </div>`;
+  }
+  return `<div class="acct">
+    <p class="acct-note">Sign in and your pledges follow you to any device.</p>
+    <div class="acct-btns">
+      <button class="btn primary sm" data-auth="up">Create account</button>
+      <button class="btn ghost sm" data-auth="in">Sign in</button>
+    </div>
+  </div>`;
+}
+function renderAccount(){
+  document.querySelectorAll("[data-account]").forEach(el=>{ el.innerHTML = accountHTML(); });
+}
+/* one delegated handler covers every [data-auth] button, wherever it is drawn */
+document.addEventListener("click", e=>{
+  const b = e.target.closest && e.target.closest("[data-auth]");
+  if(!b) return;
+  const m = b.dataset.auth;
+  if(m === "out") signOut(); else openAuth(m);
+});
+
+async function signOut(){
+  try{ await sb.auth.signOut(); }
+  catch(err){ toast("Couldn't sign out. Try again."); }
+}
+
+/* Supabase speaks in API errors; people need sentences. */
+function authMessage(err, mode){
+  const m = (err && err.message || "").toLowerCase();
+  if(m.includes("invalid login credentials")) return "That email and password don't match an account.";
+  if(m.includes("already registered") || m.includes("already been registered")) return "That email already has an account. Sign in instead.";
+  if(m.includes("email not confirmed")) return "Confirm your email address first, then sign in.";
+  if(m.includes("password should be")) return "Pick a longer password.";
+  if(m.includes("rate limit") || m.includes("too many")) return "Too many tries. Wait a minute and try again.";
+  if(m.includes("provider is not enabled")) return "Google sign-in isn't switched on for this project yet.";
+  if(m.includes("failed to fetch") || m.includes("network")) return "Couldn't reach the server. Check your connection.";
+  return (mode === "up" ? "Couldn't create the account. " : "Couldn't sign in. ") + (err && err.message ? err.message : "Try again.");
+}
+
+function openAuth(mode){
+  if(!sb){ toast("Add your Supabase keys to config.js to enable accounts"); return; }
+  const up = mode === "up";
+  openSheet(`
+    <h2 id="sheetTitle">${up?"Create your account":"Sign in"}</h2>
+    <p class="sub">${up?"So your pledges and comments follow you to any device."
+                      :"Welcome back."}</p>
+    <button class="btn google" id="gGo">${icons.google}Continue with Google</button>
+    <div class="or"><span>or</span></div>
+    <form id="authForm" novalidate>
+      ${up?`<label class="f" for="aName">Your name</label>
+      <input class="inp" id="aName" maxlength="40" autocomplete="name" placeholder="First and last name">`:""}
+      <label class="f" for="aEmail">Email</label>
+      <input class="inp" id="aEmail" type="email" autocomplete="email" placeholder="you@example.com">
+      <label class="f" for="aPass">Password</label>
+      <input class="inp" id="aPass" type="password" autocomplete="${up?"new-password":"current-password"}" placeholder="${up?"At least 8 characters":"Your password"}">
+      <div class="err" id="aErr"></div>
+      <button class="btn primary" id="aGo" type="submit">${up?"Create account":"Sign in"}</button>
+    </form>
+    <p class="swap">${up?`Already have an account? <button class="link" id="aSwap">Sign in</button>`
+                       :`New here? <button class="link" id="aSwap">Create an account</button>`}</p>`);
+
+  const err = $("#aErr"), go = $("#aGo");
+  $("#aSwap").addEventListener("click", ()=>openAuth(up?"in":"up"));
+
+  $("#gGo").addEventListener("click", async ()=>{
+    err.textContent = "";
+    try{
+      const {error} = await sb.auth.signInWithOAuth({
+        provider:"google",
+        options:{ redirectTo: location.origin + location.pathname }
+      });
+      if(error) throw error;   /* on success the browser leaves for Google */
+    }catch(e){ err.textContent = authMessage(e, mode); }
+  });
+
+  $("#authForm").addEventListener("submit", async ev=>{
+    ev.preventDefault();
+    const email = $("#aEmail").value.trim();
+    const pass  = $("#aPass").value;
+    const name  = up ? $("#aName").value.trim() : "";
+    if(up && !name){ err.textContent = "Enter your name so backers know who you are."; return; }
+    if(!email || !email.includes("@")){ err.textContent = "Enter a valid email address."; return; }
+    if(!pass || (up && pass.length < 8)){ err.textContent = up ? "Use a password of at least 8 characters." : "Enter your password."; return; }
+
+    go.disabled = true; err.textContent = "";
+    try{
+      if(up){
+        const {data, error} = await sb.auth.signUp({
+          email, password:pass,
+          options:{ data:{ display_name:name }, emailRedirectTo: location.origin + location.pathname }
+        });
+        if(error) throw error;
+        /* With "Confirm email" on, Supabase returns a user but no session. */
+        if(data.session) closeSheet(); else checkEmail(email);
+      } else {
+        const {error} = await sb.auth.signInWithPassword({email, password:pass});
+        if(error) throw error;
+        closeSheet();
+      }
+    }catch(e){
+      err.textContent = authMessage(e, mode);
+      go.disabled = false;
+    }
+  });
+}
+
+function checkEmail(email){
+  sheet.innerHTML = `<div class="grip"></div><div class="center">
+    <div class="done-mark">${icons.check}</div>
+    <h2 id="sheetTitle">Confirm your email</h2>
+    <p class="sub" style="margin-top:6px">We sent a link to <b>${esc(email)}</b>. Open it and you'll be signed in.</p>
+    <button class="btn ghost" id="ceClose" style="width:100%">Close</button></div>`;
+  $("#ceClose").onclick = closeSheet;
+  $("#ceClose").focus();
+}
+
 /* ============ my pledges ============ */
 function renderMine(){
-  const v=$("#v-mine"); const mine = store.pledges.filter(p=>p.deviceId===deviceId).sort((a,b)=>b.createdAt-a.createdAt);
+  const v=$("#v-mine"); const actors = myActors();
+  const mine = store.pledges.filter(p=>actors.includes(p.actorId)).sort((a,b)=>b.createdAt-a.createdAt);
   const total = mine.reduce((s,p)=>s+(+p.amount||0),0); const nCases = new Set(mine.map(p=>p.caseId)).size;
   v.innerHTML = `<div class="head"><h1>My pledges</h1><p>${getName()?`Pledging as ${esc(getName())}`:"Pledges you make appear here."}</p></div>
   <div class="list">
+    <div class="acct-card" data-account></div>
     <div class="stat-row"><div class="stat"><small>Total pledged</small><span class="big">${usd(total)}</span></div>
     <div class="stat"><small>Cases backed</small><span class="big">${nCases}</span></div></div>
     <div class="live" style="margin:4px 0 10px"><i></i><span></span></div>
@@ -487,6 +683,7 @@ function renderMine(){
   v.querySelectorAll(".prow").forEach(b=>b.addEventListener("click",()=>openCase(b.dataset.id)));
   const gw=v.querySelector("#goWatch"); gw && gw.addEventListener("click",()=>go("watch"));
   v.querySelectorAll(".live").forEach(el=>{ el.classList.toggle("on",store.live); el.lastChild.textContent = store.live?"Shared with all backers":"Saved on this device only"; });
+  renderAccount();
 }
 
 /* ============ navigation ============ */
@@ -506,5 +703,5 @@ function go(view){
 }
 $("#nav").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>go(b.dataset.go)));
 
-renderFeed(); renderCases(); go("watch"); refresh();
+renderFeed(); renderCases(); go("watch"); refresh(); renderAccount();
 initDb();

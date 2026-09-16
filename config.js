@@ -1,9 +1,13 @@
 // LaunchJustice configuration.
-// Leave both values empty to run in local mode (data saved in each visitor's browser).
-// To share pledges and comments between everyone, create a Supabase project,
-// run supabase/schema.sql in its SQL editor, then paste the project URL and
-// anon (public) key below. The anon key is safe to expose in the browser.
+//
+// These two values are the public identity of the Supabase project. The
+// publishable key is meant to be shipped in the browser: it grants nothing on
+// its own, because every table is protected by row level security policies.
+// Never put the service_role or secret key in this file.
+//
+// Leave both empty to run in local mode, where pledges and comments are saved
+// in each visitor's browser and accounts are unavailable.
 window.LJ_CONFIG = {
-  SUPABASE_URL: "",
-  SUPABASE_ANON_KEY: ""
+  SUPABASE_URL: "https://aghqvulngojxdkwsrcax.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_Bf3VJUz6mn-paRp_HesTIQ_olYh_K0T"
 };
