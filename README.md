@@ -103,14 +103,26 @@ Authentication → URL Configuration:
   `http://localhost:8000/**`. The port has to match the one you serve from;
   `python3 -m http.server 8000` is port 8000, not 3000.
 
-Two things worth knowing while testing:
+Three things worth knowing while testing:
 
 - Opening `index.html` as a `file://` path can never work for sign-in. Serve it
   over http, even locally.
 - A confirmation link is single use and expires (an hour by default), so a link
-  from an earlier attempt will fail even after the settings are right. Sign up
-  again to get a fresh one. The app now names the reason instead of showing a
-  blank signed-out screen.
+  from an earlier attempt will fail even after the settings are right. The
+  "Confirm your email" screen has a **Send it again** button, and the app names
+  the reason a link failed instead of showing a blank signed-out screen.
+- **A confirmation that ends on a broken redirect still worked.** The link goes
+  to Supabase, which marks the address confirmed and only then sends the browser
+  on to the app, so `ERR_CONNECTION_REFUSED` is the last step failing after the
+  confirmation succeeded. Check before assuming otherwise:
+
+      select email, email_confirmed_at from auth.users order by created_at desc;
+
+- **Signing up twice with the same address sends nothing.** Supabase answers
+  with a success and no email, so that sign-up cannot be used to find out who
+  has an account. The app spots this and says the account already exists rather
+  than promising a mail that will never arrive — but it does mean each end-to-end
+  test needs an address that has not been used yet.
 
 #### 2. Email from no-reply@peoplemachine.com
 

@@ -662,6 +662,16 @@ function openAuth(mode, initialError){
           options:{ data:{ display_name:name }, emailRedirectTo: location.origin + location.pathname }
         });
         if(error) throw error;
+        /* Signing up with an address that already has an account does not
+           error: Supabase answers 200 and sends nothing, so it cannot be used
+           to discover who has registered. It gives itself away by returning a
+           user with no identities. Saying so beats a "check your email" screen
+           for an email that will never arrive. */
+        if(data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0){
+          err.textContent = "That email already has an account. Sign in instead.";
+          go.disabled = false;
+          return;
+        }
         /* With "Confirm email" on, Supabase returns a user but no session. */
         if(data.session) closeSheet(); else checkEmail(email);
       } else {
@@ -680,8 +690,28 @@ function checkEmail(email){
   sheet.innerHTML = `<div class="grip"></div><div class="center">
     <div class="done-mark">${icons.check}</div>
     <h2 id="sheetTitle">Confirm your email</h2>
-    <p class="sub" style="margin-top:6px">We sent a link to <b>${esc(email)}</b>. Open it and you'll be signed in.</p>
-    <button class="btn ghost" id="ceClose" style="width:100%">Close</button></div>`;
+    <p class="sub" style="margin-top:6px">We sent a link to <b>${esc(email)}</b>. Open it and you'll be signed in.
+    The link works once and expires, so use the newest one.</p>
+    <div class="err" id="ceErr"></div>
+    <button class="btn primary" id="ceAgain">Send it again</button>
+    <button class="btn ghost" id="ceClose" style="width:100%;margin-top:8px">Close</button></div>`;
+  const again = $("#ceAgain"), ceErr = $("#ceErr");
+  again.onclick = async ()=>{
+    again.disabled = true; ceErr.textContent = "";
+    try{
+      const {error} = await sb.auth.resend({
+        type:"signup", email,
+        options:{ emailRedirectTo: location.origin + location.pathname }
+      });
+      if(error) throw error;
+      toast("Sent another link to "+email);
+    }catch(e){
+      ceErr.textContent = authMessage(e, "up");
+    }
+    /* always usable again: if the second mail does not arrive either, asking
+       once more is the only move the person has */
+    again.disabled = false;
+  };
   $("#ceClose").onclick = closeSheet;
   $("#ceClose").focus();
 }
