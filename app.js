@@ -611,12 +611,15 @@ function authMessage(err, mode){
 function openAuth(mode, initialError){
   if(!sb){ toast("Add your Supabase keys to config.js to enable accounts"); return; }
   const up = mode === "up";
+  /* The button is drawn only when the provider is actually enabled on the
+     Supabase project: see GOOGLE_SIGN_IN in config.js. */
+  const googleOn = !!CFG.GOOGLE_SIGN_IN;
   openSheet(`
     <h2 id="sheetTitle">${up?"Create your account":"Sign in"}</h2>
     <p class="sub">${up?"So your pledges and comments follow you to any device."
                       :"Welcome back."}</p>
-    <button class="btn google" id="gGo">${icons.google}Continue with Google</button>
-    <div class="or"><span>or</span></div>
+    ${googleOn?`<button class="btn google" id="gGo">${icons.google}Continue with Google</button>
+    <div class="or"><span>or</span></div>`:""}
     <form id="authForm" novalidate>
       ${up?`<label class="f" for="aName">Your name</label>
       <input class="inp" id="aName" maxlength="40" autocomplete="name" placeholder="First and last name">`:""}
@@ -634,7 +637,7 @@ function openAuth(mode, initialError){
   if(initialError) err.textContent = initialError;
   $("#aSwap").addEventListener("click", ()=>openAuth(up?"in":"up"));
 
-  $("#gGo").addEventListener("click", async ()=>{
+  if(googleOn) $("#gGo").addEventListener("click", async ()=>{
     err.textContent = "";
     try{
       const {error} = await sb.auth.signInWithOAuth({
