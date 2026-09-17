@@ -123,6 +123,11 @@ it, and they are there so the clip section is a working part of the product
 rather than a promise. `clips/README.md` covers encoding, how to frame footage
 so the app's furniture does not sit on it, and the one-line change per clip.
 
+A clip can also carry an `embed` instead of a `src`, which renders the
+publisher's own player in the frame. That is the route for news footage and
+anything else under licence, which is not ours to host whatever the demo is
+for. `clips/README.md` has the details.
+
 Two things to know when testing video locally: Playwright's bundled Chromium
 has no H.264 decoder, so an MP4 silently fails there and the clip falls back
 to its card, and Python's `http.server` does not serve byte ranges, which

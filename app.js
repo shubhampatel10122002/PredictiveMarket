@@ -289,6 +289,17 @@ function refresh(){
    which is how the real clips will drop in. */
 function clipHTML(src, inner=""){
   const beats = src.beats || [];
+  /* A clip can also be somebody else's player. News footage and anything else
+     under licence is not ours to host, and the publisher's embed is the route
+     that is actually allowed: their player, their terms, their count. It gets
+     the frame to itself — no captions, no progress bar, no tap-to-pause —
+     because the controls belong to whoever owns the video. */
+  if(src.embed) return `<div class="frame">
+    <div class="stage embedded" style="--cat:${CATS[src.cat].color}">
+      <iframe class="vid" src="${esc(src.embed)}" title="${esc(src.title || "Case clip")}"
+        loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
+    </div>${inner}</div>`;
   /* A real file plays as a video. Without one the clip is still built like
      footage rather than like a caption card: the case photograph sits behind
      the type on a slow push-in, under grain and a vignette, so the section
@@ -311,7 +322,9 @@ class Clip{
     this.t=0; this.beat=-1; this.playing=false; this.userPaused=false; this.last=performance.now();
     this.p=root.querySelector(".caption p"); this.segs=[...root.querySelectorAll(".seg i")];
     this.stage=root.querySelector(".stage"); this.video=root.querySelector("video");
-    root.querySelector(".tap").addEventListener("click",()=>{ this.userPaused=!this.userPaused; this.userPaused?this.pause():this.play(); });
+    this.embed=!!root.querySelector("iframe");
+    const tap=root.querySelector(".tap");
+    if(tap) tap.addEventListener("click",()=>{ this.userPaused=!this.userPaused; this.userPaused?this.pause():this.play(); });
     /* A video that will not load must not leave a black rectangle on the
        screen. It is dropped and the clip falls back to the treatment it would
        have had with no file at all, captions included. */
@@ -338,9 +351,9 @@ class Clip{
   }
   show(i){ if(!this.p || i===this.beat) return; this.beat=i; this.p.classList.remove("lit","enter"); this.p.firstChild.textContent=this.beats[i];
     void this.p.offsetWidth; this.p.classList.add("enter"); requestAnimationFrame(()=>requestAnimationFrame(()=>this.p.classList.add("lit"))); }
-  play(){ if(this.userPaused) return; this.playing=true; this.stage.classList.remove("paused"); this.last=performance.now();
+  play(){ if(this.embed || this.userPaused) return; this.playing=true; this.stage.classList.remove("paused"); this.last=performance.now();
     if(this.video) this.video.play().catch(()=>{}); }
-  pause(){ this.playing=false; this.stage.classList.add("paused"); if(this.video) this.video.pause(); }
+  pause(){ if(this.embed) return; this.playing=false; this.stage.classList.add("paused"); if(this.video) this.video.pause(); }
   tick(now){ if(!this.playing) return;
     if(this.video && this.video.duration) this.t=this.video.currentTime/this.video.duration*this.span;
     else this.t=(this.t+(now-this.last))%this.span;
@@ -354,8 +367,8 @@ const clips = new Set();
 
 /* a case's own hero clip, and the short clips in its clip section, are the
    same kind of thing to the player */
-const caseClip = c => ({beats:c.beats, video:c.video, poster:c.poster, cat:c.cat,
-                        photo: c.hero && c.hero.src, kb:0});
+const caseClip = c => ({beats:c.beats, video:c.video, embed:c.embed, poster:c.poster, cat:c.cat,
+                        title:c.head, photo: c.hero && c.hero.src, kb:0});
 /* each short clip frames the photograph differently, so a rail of five does
    not look like the same still five times */
 const shortClip = (c, k) => ({...c.clips[k], video:c.clips[k].src, cat:c.cat,
@@ -379,7 +392,7 @@ function renderFeed(){
   feed.innerHTML = feedOrder.map(c=>`
   <article class="reel" data-id="${c.id}" aria-label="${esc(c.head)}">
     ${clipHTML(caseClip(c), `
-      <div class="topbar"><div class="wordmark">Launch<span>Justice</span></div><div class="demo-pill">Demo cases</div></div>
+      <div class="topbar"><div class="wordmark">Launch<span>Justice</span></div></div>
       <div class="meta" style="--cat:${CATS[c.cat].color}">
         ${trendBadge(c,"on-dark")}
         <div class="org"><span class="dot"></span>${esc(c.ngo)}</div>
@@ -554,7 +567,8 @@ function scoreHeadline(c){
       <button class="shead-row m" data-score="merit">
         <b>${m}</b><span class="shead-lab">Chance to win</span></button>
       <button class="shead-row i" data-score="impact">
-        <b>${i}</b><span class="shead-lab">Social impact</span></button>
+        <b>${i}</b><span class="shead-lab">Social impact</span>
+        <small>How much it matters beyond the plaintiffs.</small></button>
     </div>
     <button class="shead-more" data-score="merit">See how both are built ${icons.back}</button>
   </div>`;
@@ -988,7 +1002,6 @@ function composerHTML(id){
   return `<div class="composer">
     <textarea rows="2" maxlength="600" placeholder="What do you make of this case?" aria-label="Write a comment"></textarea>
     <div class="composer-foot">
-      <span class="composer-hint">Backers and readers both welcome.</span>
       <button class="btn ghost" data-post="${id}">Post</button>
     </div>
     <div class="err" data-cerr></div>
