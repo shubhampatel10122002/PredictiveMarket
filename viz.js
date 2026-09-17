@@ -202,10 +202,12 @@ function runway(c){
   }
   /* the end of the rail is the end of the lock-in, so it is labelled as one,
      on the year line where it cannot collide with the stage marker above */
+  const eY = Y+H+21;                /* baseline of the year line */
+  const LK = 0.66, LKH = 14.5;      /* glyph scale, and its height in glyph units */
   ticks += `<g class="rw-end">
-    <path class="rw-lock" transform="translate(${X1-42} ${Y+H+9}) scale(.66)"
+    <path class="rw-lock" transform="translate(${(X1-45).toFixed(1)} ${(eY-LKH*LK).toFixed(2)}) scale(${LK})"
       d="M2 6.5h10v7H2zM4 6.5V4.2a3 3 0 0 1 6 0v2.3"/>
-    <text class="rw-endy" x="${X1}" y="${Y+H+21}" text-anchor="end">${endYear(c)}</text></g>`;
+    <text class="rw-endy" x="${X1}" y="${eY}" text-anchor="end">${endYear(c)}</text></g>`;
   return `<svg class="runway" viewBox="0 0 ${W} 82" role="img" aria-label="Case runway. ${xml(STAGES[c.stageIdx])} now, about ${lockYears(c)} years in total, expected to end in ${endYear(c)}.">
     <g>${segs}</g><g>${stops}</g><g>${ticks}</g>
     <g class="rw-marker" style="--mx:${mx.toFixed(1)}px">

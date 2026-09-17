@@ -63,6 +63,9 @@ img{max-width:100%}
 .frame{position:absolute;inset:0;overflow:hidden}
 .stage{position:absolute;inset:0;background:var(--feed)}
 .vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:var(--feed)}
+/* an embedded player fills the frame and keeps its own controls */
+iframe.vid{border:0;object-fit:unset}
+.stage.embedded::before,.stage.embedded::after{display:none}
 /* A real clip brings its own grade. The colour wash, the scan lines and the
    moving grain are all treatments for a still, so they come off once there is
    footage; only the vignette stays, because the app still draws type over it. */
@@ -98,10 +101,9 @@ img{max-width:100%}
 .segs{position:absolute;top:12px;left:14px;right:14px;display:flex;gap:4px;z-index:3}
 .seg{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.25);overflow:hidden}
 .seg i{display:block;height:100%;width:0;background:#fff}
-.topbar{position:absolute;top:24px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:center;z-index:3}
+.topbar{position:absolute;top:24px;left:16px;right:16px;display:flex;align-items:center;z-index:3}
 .wordmark{font-weight:800;font-size:19px;letter-spacing:-.02em}
 .wordmark span{background:var(--hl);color:#16202C;padding:0 4px;border-radius:3px;margin-left:1px}
-.demo-pill{font-size:12px;padding:3px 9px;border-radius:99px;background:rgba(255,255,255,.12);color:#D6DEE8}
 .caption{position:absolute;left:20px;right:78px;top:24%;z-index:2}
 .caption p{margin:0;font-weight:700;font-size:clamp(26px,7.4vw,32px);line-height:1.18;letter-spacing:-.015em}
 .caption p span{background-image:linear-gradient(var(--hl),var(--hl));background-repeat:no-repeat;background-size:0% 100%;background-position:0 0;color:#fff;transition:background-size .7s ease .15s, color .3s ease .5s;-webkit-box-decoration-break:clone;box-decoration-break:clone;padding:0 4px}
@@ -212,6 +214,8 @@ label.f{display:block;font-size:14px;font-weight:600;margin:14px 0 6px}
 .check input{width:18px;height:18px;accent-color:var(--ink)}
 .notice{font-size:13px;color:var(--muted);background:var(--bg);border-radius:12px;padding:10px 12px;margin:14px 0}
 .err{color:var(--danger);font-size:13px;min-height:18px;margin-top:6px}
+.composer .err{padding:0 10px;min-height:0}
+.composer .err:empty{display:none}
 .done-mark{width:64px;height:64px;border-radius:50%;background:var(--hl);display:grid;place-items:center;margin:10px auto 12px;color:#16202C}
 .center{text-align:center}
 
@@ -540,13 +544,14 @@ label.f{display:block;font-size:14px;font-weight:600;margin:14px 0 6px}
 .csbox .btn{margin-top:auto;width:100%;margin-block-start:14px}
 
 /* composer with a stance */
-.composer{display:block;margin-bottom:16px}
-.composer textarea{width:100%;resize:none;min-height:62px;max-height:140px;padding:12px 14px;
-  border-radius:14px 14px 0 0;border:1px solid var(--line);border-bottom:0;background:var(--surface)}
-.composer-foot{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);
-  border-radius:0 0 14px 14px;background:var(--surface);flex-wrap:wrap}
-.composer-hint{flex:1;min-width:0;font-size:12.5px;color:var(--muted)}
-.composer .btn{padding:9px 18px;font-size:14px;flex:none;margin-left:auto}
+.composer{margin-bottom:16px;border:1px solid var(--line);border-radius:16px;background:var(--surface);
+  padding:4px 4px 8px}
+.composer textarea{width:100%;resize:none;min-height:64px;max-height:150px;padding:11px 12px 4px;
+  border:0;background:none;display:block}
+.composer textarea:focus-visible{outline:none}
+.composer:focus-within{border-color:var(--muted)}
+.composer-foot{display:flex;justify-content:flex-end;padding:0 8px}
+.composer .btn{padding:9px 20px;font-size:14px}
 
 /* comments */
 .cmt{display:flex;gap:10px;padding:14px 0;border-bottom:1px solid var(--line)}
@@ -962,7 +967,6 @@ line.bl-tick{stroke:var(--impact);stroke-width:2.4;stroke-linecap:round}
   /* the sidebar already carries the account, so don't repeat it here */
   #v-mine .acct-card{display:none}
   .brand .wordmark{font-size:22px;color:var(--ink)}
-  .brand .tag{display:block;margin-top:4px;font-size:12px;color:var(--muted)}
 
   /* clip feed: the sidebar eats width, and the brand now lives there */
   #v-watch .reel{--gutter:530px;padding:24px}

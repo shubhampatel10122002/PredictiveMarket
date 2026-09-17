@@ -116,11 +116,23 @@ milestones, plus the 60-second hero clip.
   on a case are each framed differently so the rail does not look like one
   still repeated.
 
-`tools/render-clips.js` renders a case's clips to real MP4 files from its own
-beats, so the `<video>` path can be exercised with actual files before any
-footage exists. What it produces is a placeholder for filmed footage, not a
-substitute for it. `clips/README.md` covers encoding, the one-line change per
-clip, and how to run the renderer.
+**maple-evictions ships with real video** — six MP4s in `clips/`, rendered
+from the case's own beats by `tools/render-clips.js`, playing through the real
+`<video>` path. They are placeholders for filmed footage, not a substitute for
+it, and they are there so the clip section is a working part of the product
+rather than a promise. `clips/README.md` covers encoding, how to frame footage
+so the app's furniture does not sit on it, and the one-line change per clip.
+
+A clip can also carry an `embed` instead of a `src`, which renders the
+publisher's own player in the frame. That is the route for news footage and
+anything else under licence, which is not ours to host whatever the demo is
+for. `clips/README.md` has the details.
+
+Two things to know when testing video locally: Playwright's bundled Chromium
+has no H.264 decoder, so an MP4 silently fails there and the clip falls back
+to its card, and Python's `http.server` does not serve byte ranges, which
+media playback needs. Every shipping browser plays these files, and Vercel
+serves ranges.
 
 A clip that has a video does not draw the beat captions over it: real footage
 carries its own words. The beats stay in the data as the written version.

@@ -5,14 +5,20 @@ Short vertical video for the case pages. Everything here is 9:16 — the frame i
 
 ## What is in here now
 
-Nothing filmed yet. Every case plays its clip card: the case photograph on a
-slow push-in, under grain and a vignette, with the beats set over it.
+Six files for **maple-evictions**: the hero clip and its five short ones,
+rendered from the case's own beats by `tools/render-clips.js`. They are real
+MP4s played through the real `<video>` path, and they are placeholders for
+filmed footage rather than a substitute for it. Replace them as clips are shot.
 
-`tools/render-clips.js` turns a case's beats into real MP4 files, so the
-`<video>` path can be exercised with actual files. What it makes is a
-placeholder for filmed footage, not a substitute for it. Clips with a file and
-clips without sit in the same rail, which is what the product looks like while
-content is being made.
+Every other case plays its clip card instead: the case photograph on a slow
+push-in, under grain and a vignette, with the beats set over it. Clips with a
+file and clips without sit in the same rail, which is what the product looks
+like while content is being made.
+
+A rendered clip carries no wordmark, no progress bar and no credit, because
+the app draws all three over whatever it plays. Frame real footage the same
+way: the app's furniture sits along the bottom of the feed and down the right,
+so keep the bottom third and the right edge clear.
 
 ## Adding a real clip
 
@@ -38,6 +44,36 @@ in `clips[]`:
 - `beats` stays either way. A clip with a video does not draw the beat captions
   over it, because a real clip carries its own words, but the beats remain as
   the written version of the clip.
+
+## Footage you do not own
+
+News packages, documentary excerpts and anything else under licence are not
+ours to host. Putting a broadcaster's file in this folder is copyright
+infringement however the demo is framed, and the fact that it is a pitch does
+not change that.
+
+The route that is allowed is the publisher's own embed, so a clip can carry an
+`embed` instead of a `src`:
+
+```js
+{id:"a1", title:"ABC7 on the eviction notices", milestone:1, secs:96,
+ embed:"https://www.youtube.com/embed/VIDEO_ID", beats:[...]},
+```
+
+An embedded clip gets the frame to itself. No captions, no progress bar, no
+tap-to-pause, because the controls belong to whoever owns the video. Anything
+YouTube or Vimeo will serve in an iframe works; so does a broadcaster's own
+player where they publish embed codes.
+
+Two practical notes. Vertical uploads and YouTube Shorts fill a 9:16 frame;
+ordinary 16:9 footage gets pillarboxed by the player, which is correct but
+looks less native, so prefer vertical cuts where the publisher offers them.
+And if you want it to start on its own, that is the platform's parameter to
+add, e.g. `?autoplay=1&mute=1&playsinline=1` on a YouTube embed.
+
+Getting permission and a file direct from a newsroom is worth asking for: many
+will licence a short excerpt for a non-profit, and a hosted file behaves far
+better in this feed than an embed does.
 
 ## Encoding
 

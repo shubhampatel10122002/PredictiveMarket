@@ -178,6 +178,7 @@ const CASES = [
   title:"Stop no-cause evictions in Maple County",
   caseName:"Alvarez v. Northgate Property Management",
   ngo:"Tenant Defense Fund", defendant:"Northgate Property Management",
+  video:"clips/maple-evictions-hero.mp4",
   court:"County Circuit Court", judge:"Hon. P. Nakamura",
   goal:640000, baseRaised:612900, baseBackers:31447, watching:5904,
   vetted:"21 Apr 2026",
@@ -212,11 +213,11 @@ const CASES = [
     {kind:"delta", value:"+94%", label:"rent on the relisted units", note:"$1,450 to $2,815 a month."}
   ],
   clips:[
-    {id:"m1", title:"The week the notices came", milestone:0, secs:22, src:null, beats:["Tuesday: eleven notices.","Wednesday: nineteen.","Friday: ten more.","Same wording. Same printer."]},
-    {id:"m2", title:"Building a tenant association in nine days", milestone:0, secs:22, src:null, beats:["Forty doors.","Four languages.","One meeting in a laundry room.","Thirty-eight families signed on."]},
-    {id:"m3", title:"Inside the first hearing", milestone:1, secs:22, src:null, beats:["The courtroom held sixty.","A hundred and ten came.","The judge moved us to the big room.","Nobody left early."]},
-    {id:"m4", title:"What discovery turned up", milestone:2, secs:22, src:null, beats:["We asked for the renovation permits.","There are four.","There are forty units.","That is the case."]},
-    {id:"m5", title:"Rosa, 31 years in 4B", milestone:2, secs:22, src:null, beats:["Rosa moved in in 1995.","She raised two children in 4B.","Her notice gave her sixty days.","She is still there."]}
+    {id:"m1", title:"The week the notices came", milestone:0, secs:22, src:"clips/maple-evictions-0.mp4", beats:["Tuesday: eleven notices.","Wednesday: nineteen.","Friday: ten more.","Same wording. Same printer."]},
+    {id:"m2", title:"Building a tenant association in nine days", milestone:0, secs:22, src:"clips/maple-evictions-1.mp4", beats:["Forty doors.","Four languages.","One meeting in a laundry room.","Thirty-eight families signed on."]},
+    {id:"m3", title:"Inside the first hearing", milestone:1, secs:22, src:"clips/maple-evictions-2.mp4", beats:["The courtroom held sixty.","A hundred and ten came.","The judge moved us to the big room.","Nobody left early."]},
+    {id:"m4", title:"What discovery turned up", milestone:2, secs:22, src:"clips/maple-evictions-3.mp4", beats:["We asked for the renovation permits.","There are four.","There are forty units.","That is the case."]},
+    {id:"m5", title:"Rosa, 31 years in 4B", milestone:2, secs:22, src:"clips/maple-evictions-4.mp4", beats:["Rosa moved in in 1995.","She raised two children in 4B.","Her notice gave her sixty days.","She is still there."]}
   ],
   people:{
     plaintiff:{name:"Rosa Alvarez", role:"Named plaintiff", bio:"Has lived in the same two-bedroom for 31 years and raised two children there. Convened the first tenant meeting in the building's laundry room."},
