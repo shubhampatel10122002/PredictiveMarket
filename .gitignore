@@ -2,3 +2,6 @@ node_modules/
 .DS_Store
 .vercel
 .env*
+
+# fetched for the clip renderer, not part of the app
+tools/.cache/

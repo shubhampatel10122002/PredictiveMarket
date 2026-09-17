@@ -115,7 +115,7 @@ function waterfall(c){
 
   const yF = rowY(f.length+1);
   risers += `<line class="wf-riser" x1="${sx(run).toFixed(1)}" y1="${yF-11}" x2="${sx(run).toFixed(1)}" y2="${yF+3}"/>`;
-  rows += `<g class="wf-row wf-final" tabindex="0" role="button" data-note="Demo model. The factors above are illustrative and are not a prediction." aria-label="This case, ${final} percent">
+  rows += `<g class="wf-row wf-final" tabindex="0" role="button" data-note="Where this case lands once every factor above is applied." aria-label="This case, ${final} percent">
     <rect class="wf-hit" x="0" y="${yF-4}" width="340" height="${ROW}" rx="7"/>
     <text class="wf-lab strong" x="${LAB}" y="${yF+14}" text-anchor="end">This case</text>
     <g class="wf-bar">${rr(sx(0), yF+2, sx(final)-sx(0), 18, 4)}</g>
@@ -196,14 +196,16 @@ function runway(c){
   let ticks = "";
   for(let y=0; y<=Math.floor(tot/12); y++){
     const tx = X0 + yearW*y;
-    if(tx > X1-40) break;   /* leave the end of the rail to the lock */
+    if(tx > X1-58) break;   /* leave the end of the year line to the lock */
     ticks += `<line class="rw-tick" x1="${tx.toFixed(1)}" y1="${Y+H+4}" x2="${tx.toFixed(1)}" y2="${Y+H+9}"/>
       <text class="rw-year" x="${tx.toFixed(1)}" y="${Y+H+21}" text-anchor="${y===0?"start":"middle"}">${c.startYear+y}</text>`;
   }
-  /* the end of the rail is the end of the lock-in, so it is drawn as one */
-  ticks += `<g class="rw-end"><path class="rw-lock" transform="translate(${X1-33} ${Y-12}) scale(.62)"
+  /* the end of the rail is the end of the lock-in, so it is labelled as one,
+     on the year line where it cannot collide with the stage marker above */
+  ticks += `<g class="rw-end">
+    <path class="rw-lock" transform="translate(${X1-42} ${Y+H+9}) scale(.66)"
       d="M2 6.5h10v7H2zM4 6.5V4.2a3 3 0 0 1 6 0v2.3"/>
-    <text class="rw-endy" x="${X1}" y="${Y-4}" text-anchor="end">${endYear(c)}</text></g>`;
+    <text class="rw-endy" x="${X1}" y="${Y+H+21}" text-anchor="end">${endYear(c)}</text></g>`;
   return `<svg class="runway" viewBox="0 0 ${W} 82" role="img" aria-label="Case runway. ${xml(STAGES[c.stageIdx])} now, about ${lockYears(c)} years in total, expected to end in ${endYear(c)}.">
     <g>${segs}</g><g>${stops}</g><g>${ticks}</g>
     <g class="rw-marker" style="--mx:${mx.toFixed(1)}px">
@@ -235,11 +237,9 @@ function outcomeFan(c, amount){
     const w = 3 + r.p*30;
     paths += `<path class="fan-b fan-${r.k}" style="--i:${i};--w:${w.toFixed(1)}"
       d="M${XS} ${y0}C${XS+72} ${y0} ${XE-78} ${r.y} ${XE} ${r.y}"/>`;
-    const gain = r.amt - amount;
-    const pcChange = r.amt===0 ? "−100%" : (gain>0?"+":"")+Math.round(gain/amount*100)+"%";
     ends += `<g class="fan-end fan-${r.k}" style="--i:${i}">
       <circle class="fan-node" cx="${XE}" cy="${r.y}" r="4.5"/>
-      <text class="fan-amt" x="${XE+12}" y="${r.y-1}">${r.amt ? "$"+num(r.amt) : "$0"}<tspan class="fan-pc" dx="6">${pcChange}</tspan></text>
+      <text class="fan-amt" x="${XE+12}" y="${r.y-1}">${r.amt ? "$"+num(r.amt) : "$0"}</text>
       <text class="fan-sub" x="${XE+12}" y="${r.y+14}">${xml(r.label)} · ${Math.round(r.p*100)}% likely</text></g>`;
   });
   return `<svg class="fan" viewBox="0 0 ${W} ${H}" role="img" aria-label="Outcome fan for a ${num(amount)} dollar pledge: won pays ${num(o.win)} dollars at ${Math.round(o.p.win*100)} percent, settled pays ${num(o.settle)} at ${Math.round(o.p.settle*100)} percent, lost pays nothing at ${Math.round(o.p.lose*100)} percent.">

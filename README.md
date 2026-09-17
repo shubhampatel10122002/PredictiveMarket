@@ -28,6 +28,8 @@ members would look, so the product can be shown rather than described.
 | `app.js` | State, screens and interaction |
 | `config.js` | Supabase project URL and publishable key |
 | `supabase/schema.sql` | Tables, row level security policies and grants |
+| `clips/` | Vertical clip files, and how to add real ones |
+| `tools/` | The clip renderer. Not shipped, not loaded by the app |
 
 ## The two scores
 
@@ -108,6 +110,20 @@ milestones, plus the 60-second hero clip.
   if it fails to load, so a dead URL or a flight with no wifi shows intentional
   artwork rather than a broken image. Replace these with licensed photography
   before this goes in front of the public.
+- A clip without a file is not a blank card. It plays the case photograph on a
+  slow push-in, under grain and a vignette, with the beats set over it, so the
+  rail reads as a clip reel while the real ones are being shot. The five clips
+  on a case are each framed differently so the rail does not look like one
+  still repeated.
+
+`tools/render-clips.js` renders a case's clips to real MP4 files from its own
+beats, so the `<video>` path can be exercised with actual files before any
+footage exists. What it produces is a placeholder for filmed footage, not a
+substitute for it. `clips/README.md` covers encoding, the one-line change per
+clip, and how to run the renderer.
+
+A clip that has a video does not draw the beat captions over it: real footage
+carries its own words. The beats stay in the data as the written version.
 
 ## Run locally
 
@@ -356,8 +372,12 @@ into `timeline[]` that decides which case milestone a clip is offered from.
 - Nothing is loaded from a chart library or an animation framework. The charts
   are inline SVG built in `viz.js`, animated with CSS and the Web Animations
   API, so the site works with no network beyond the page itself.
-- Stance tags, ratings and likes on seeded comments are per-browser. Real
-  comments, pledges and likes go to Supabase exactly as before.
+- Ratings and likes on seeded comments are per-browser. Real comments, pledges
+  and likes go to Supabase exactly as before.
+- Nothing degrades to a broken box. A photograph that will not load removes
+  itself and leaves the generated artwork underneath; a video that will not
+  load drops out and the clip falls back to the photograph with its captions,
+  the same treatment it would have had with no file at all.
 
 ## Not in this version
 

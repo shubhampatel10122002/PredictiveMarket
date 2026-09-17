@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LaunchJustice clip studio</title>
+<!--
+  A render target, not part of the app.
+
+  It draws one clip at 720x1280 and exposes window.frame(t), which sets every
+  moving thing from an absolute time in seconds. Nothing here animates on its
+  own clock, so a frame grabbed at t=7.5 is identical every time it is grabbed.
+  tools/render-clips.js drives it with a headless browser and pipes the frames
+  through ffmpeg. Open it directly with ?case=<id>&clip=<n>&t=<seconds> to look
+  at a single frame by hand.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:720px;height:1280px;overflow:hidden;background:#0E141C}
+  body{font-family:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;color:#fff}
+  #stage{position:relative;width:720px;height:1280px;overflow:hidden;isolation:isolate}
+  #art{position:absolute;inset:-12%;will-change:transform}
+  #art svg{width:100%;height:100%;display:block}
+  #vig{position:absolute;inset:0;background:radial-gradient(112% 74% at 50% 34%, transparent 28%, rgba(6,10,16,.9) 100%)}
+  #grain{position:absolute;inset:-40%;opacity:.09;
+    background-image:repeating-conic-gradient(rgba(255,255,255,.9) 0% 25%, transparent 0% 50%);background-size:3px 3px}
+  #scan{position:absolute;inset:0;opacity:.5;
+    background-image:repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 1px, transparent 1px 64px);
+    -webkit-mask-image:linear-gradient(180deg,#000,transparent 86%)}
+  /* progress segments */
+  #segs{position:absolute;top:34px;left:34px;right:34px;display:flex;gap:8px}
+  #segs div{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.24);overflow:hidden}
+  #segs i{display:block;height:100%;width:0;background:#fff}
+  /* brand */
+  #brand{position:absolute;top:66px;left:34px;font-weight:800;font-size:34px;letter-spacing:-.02em}
+  #brand span{background:#F2C230;color:#16202C;padding:0 7px;border-radius:5px;margin-left:2px}
+  /* the beat */
+  #beat{position:absolute;left:44px;right:96px;top:22%;font-weight:800;font-size:62px;line-height:1.1;letter-spacing:-.02em}
+  #beat b{font-weight:800;background-image:linear-gradient(#F2C230,#F2C230);background-repeat:no-repeat;
+    background-size:0% 100%;background-position:0 0;padding:2px 8px;-webkit-box-decoration-break:clone;
+    box-decoration-break:clone;color:#fff}
+  /* the credit rides under the brand, because the foot of the frame belongs
+     to whatever the app draws over the clip */
+  #lower{position:absolute;left:44px;right:44px;top:116px}
+  #lower .cat{display:inline-flex;align-items:center;gap:10px;font-size:21px;font-weight:600;color:#DCE4EE}
+  #lower .cat i{width:12px;height:12px;border-radius:50%;background:var(--cat)}
+  #lower .name{font-size:21px;font-weight:600;color:#9EAABA;margin-top:3px}
+  /* end card */
+  #end{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:flex-start;
+    align-items:flex-start;padding:21% 56px 0;background:rgba(8,12,18,.88);opacity:0}
+  #end h1{font-size:50px;font-weight:800;line-height:1.12;letter-spacing:-.025em;margin-bottom:22px}
+  #end p{font-size:27px;color:#B9C4D2;margin-bottom:40px;line-height:1.4}
+  #end .cta{display:inline-block;background:#F2C230;color:#16202C;font-weight:800;font-size:28px;
+    padding:20px 34px;border-radius:18px}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="art"></div>
+  <div id="scan"></div>
+  <div id="vig"></div>
+  <div id="grain"></div>
+  <div id="segs"></div>
+  <div id="brand">Launch<span>Justice</span></div>
+  <div id="beat"><b></b></div>
+  <div id="lower"><div class="cat"><i></i><span></span></div><div class="name"></div></div>
+  <div id="end"><h1></h1><p></p><span class="cta">Back this case</span></div>
+</div>
+
+<script src="../data.js"></script>
+<script>
+const q = new URLSearchParams(location.search);
+const c = byId2(q.get("case") || "maple-evictions");
+function byId2(id){ return CASES.find(x=>x.id===id) || CASES[0]; }
+const ci = q.get("clip");
+const clip = (ci === null || ci === "hero") ? {id:"hero", title:c.head, beats:c.beats} : c.clips[+ci];
+if(!clip){ window.DUR = 0; throw new Error("no clip "+ci); }
+window.clip = clip;
+const BEATS = clip.beats;
+const BEAT = +(q.get("beat") || 4.6);        /* seconds per beat */
+const END  = +(q.get("end")  || 3.2);        /* seconds of end card */
+const DUR  = BEATS.length * BEAT + END;
+const col  = CATS[c.cat].color;
+
+document.documentElement.style.setProperty("--cat", col);
+document.getElementById("art").innerHTML = heroArtStudio(c);
+document.getElementById("segs").innerHTML = BEATS.map(()=>'<div><i></i></div>').join("");
+document.querySelector("#lower .cat span").textContent = CATS[c.cat].label;
+document.querySelector("#lower .name").textContent = c.ngo;
+document.querySelector("#end h1").textContent = c.head;
+document.querySelector("#end p").textContent = c.caseName;
+
+/* the same generated artwork the app draws, at render size */
+function heroArtStudio(cs){
+  const k = CATS[cs.cat].color;
+  return `<svg viewBox="0 0 400 700" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <radialGradient id="a" cx="30%" cy="24%" r="64%">
+        <stop offset="0%" stop-color="${k}" stop-opacity=".95"/><stop offset="100%" stop-color="${k}" stop-opacity="0"/></radialGradient>
+      <radialGradient id="b" cx="74%" cy="74%" r="60%">
+        <stop offset="0%" stop-color="${k}" stop-opacity=".6"/><stop offset="100%" stop-color="${k}" stop-opacity="0"/></radialGradient>
+      <radialGradient id="cc" cx="62%" cy="16%" r="46%">
+        <stop offset="0%" stop-color="#fff" stop-opacity=".2"/><stop offset="100%" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    </defs>
+    <rect width="400" height="700" fill="#0E141C"/>
+    <rect width="400" height="700" fill="url(#a)"/>
+    <rect width="400" height="700" fill="url(#b)"/>
+    <rect width="400" height="700" fill="url(#cc)"/>
+  </svg>`;
+}
+
+const ease = t => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
+const beatEl = document.getElementById("beat"), markEl = beatEl.querySelector("b");
+const segs = [...document.querySelectorAll("#segs i")];
+const endEl = document.getElementById("end");
+const artEl = document.getElementById("art");
+const grainEl = document.getElementById("grain");
+const lowerEl = document.getElementById("lower");
+
+/* everything on screen, as a pure function of t */
+window.frame = function(t){
+  const bi = Math.min(BEATS.length-1, Math.floor(t/BEAT));
+  const bt = t - bi*BEAT;                       /* time inside this beat */
+  markEl.textContent = BEATS[bi];
+
+  /* the beat rises in, the highlight sweeps behind it, it leaves */
+  const inK  = ease(bt/0.55);
+  const outK = bt > BEAT-0.45 ? ease((bt-(BEAT-0.45))/0.45) : 0;
+  beatEl.style.opacity   = (inK * (1-outK)).toFixed(3);
+  beatEl.style.transform = `translateY(${((1-inK)*26 - outK*22).toFixed(1)}px)`;
+  const sweep = Math.min(1, Math.max(0, (bt-0.35)/0.75));
+  markEl.style.backgroundSize = (ease(sweep)*100).toFixed(1)+"% 100%";
+  markEl.style.color = sweep > 0.55 ? "#16202C" : "#fff";
+
+  segs.forEach((s,k)=>{
+    s.style.width = (k < bi ? 100 : k > bi ? 0 : Math.min(100, bt/BEAT*100)).toFixed(1)+"%";
+  });
+
+  /* a slow push-in across the whole clip, so the frame is never still */
+  const k = t/DUR;
+  artEl.style.transform = `scale(${(1.03 + k*0.14).toFixed(4)}) translate3d(${(-k*1.6).toFixed(2)}%, ${(-k*2.4).toFixed(2)}%, 0)`;
+  /* grain has to move or it reads as a texture rather than as film */
+  const g = Math.floor(t*12) % 3;
+  grainEl.style.transform = `translate3d(${[0,-2,1.6][g]}%, ${[0,1.5,-2][g]}%, 0)`;
+
+  const lowIn = ease((t-0.5)/0.7);
+  lowerEl.style.opacity = lowIn.toFixed(3);
+  lowerEl.style.transform = `translateY(${((1-lowIn)*18).toFixed(1)}px)`;
+
+  const endT = t - BEATS.length*BEAT;
+  endEl.style.opacity = endT > 0 ? ease(endT/0.5).toFixed(3) : 0;
+};
+window.DUR = DUR;
+window.frame(+(q.get("t") || 0));
+</script>
+</body>
+</html>
