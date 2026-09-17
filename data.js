@@ -7,12 +7,10 @@
    millions of members. Nothing here is a real case, a real person or a
    real prediction.
 
-   Two rules keep the demo honest:
-     - Scores are DERIVED, never typed in. A case's chance-to-win is its
-       base rate plus its factor deltas; its impact score is the weighted
-       average of its impact factors. Change a factor and every screen that
-       shows the score changes with it.
-     - Anything a real model would produce is labelled "Demo model" in the UI.
+   One rule keeps it honest: scores are DERIVED, never typed in. A case's
+   chance-to-win is its base rate plus its factor deltas; its impact score is
+   the weighted average of its impact factors. Change a factor and every
+   screen that shows the score changes with it.
    ===================================================================== */
 
 const CATS = {
@@ -214,11 +212,11 @@ const CASES = [
     {kind:"delta", value:"+94%", label:"rent on the relisted units", note:"$1,450 to $2,815 a month."}
   ],
   clips:[
-    {id:"m1", title:"The week the notices came", milestone:0, secs:49, src:null, beats:["Tuesday: eleven notices.","Wednesday: nineteen.","Friday: ten more.","Same wording. Same printer."]},
-    {id:"m2", title:"Building a tenant association in nine days", milestone:0, secs:66, src:null, beats:["Forty doors.","Four languages.","One meeting in a laundry room.","Thirty-eight families signed on."]},
-    {id:"m3", title:"Inside the first hearing", milestone:1, secs:52, src:null, beats:["The courtroom held sixty.","A hundred and ten came.","The judge moved us to the big room.","Nobody left early."]},
-    {id:"m4", title:"What discovery turned up", milestone:2, secs:58, src:null, beats:["We asked for the renovation permits.","There are four.","There are forty units.","That is the case."]},
-    {id:"m5", title:"Rosa, 31 years in 4B", milestone:2, secs:44, src:null, beats:["Rosa moved in in 1995.","She raised two children in 4B.","Her notice gave her sixty days.","She is still there."]}
+    {id:"m1", title:"The week the notices came", milestone:0, secs:22, src:null, beats:["Tuesday: eleven notices.","Wednesday: nineteen.","Friday: ten more.","Same wording. Same printer."]},
+    {id:"m2", title:"Building a tenant association in nine days", milestone:0, secs:22, src:null, beats:["Forty doors.","Four languages.","One meeting in a laundry room.","Thirty-eight families signed on."]},
+    {id:"m3", title:"Inside the first hearing", milestone:1, secs:22, src:null, beats:["The courtroom held sixty.","A hundred and ten came.","The judge moved us to the big room.","Nobody left early."]},
+    {id:"m4", title:"What discovery turned up", milestone:2, secs:22, src:null, beats:["We asked for the renovation permits.","There are four.","There are forty units.","That is the case."]},
+    {id:"m5", title:"Rosa, 31 years in 4B", milestone:2, secs:22, src:null, beats:["Rosa moved in in 1995.","She raised two children in 4B.","Her notice gave her sixty days.","She is still there."]}
   ],
   people:{
     plaintiff:{name:"Rosa Alvarez", role:"Named plaintiff", bio:"Has lived in the same two-bedroom for 31 years and raised two children there. Convened the first tenant meeting in the building's laundry room."},

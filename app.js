@@ -185,10 +185,6 @@ async function addComment(c){
   if(sb){
     const {error} = await sb.from("comments").insert({case_id:c.caseId, name:c.name, avatar_url:myAvatar(), body:c.text, is_backer:!!c.backer, ...stamp()});
     if(error) throw error;
-    /* The stance tag is a demo feature and has no column in the shipped
-       schema, so it is remembered per browser and matched back to the row
-       by its text. Give it a column before this ships for real. */
-    if(c.stance) rememberStance(c.caseId, c.text, c.stance);
     scheduleFetch();
   } else {
     store.comments.push({id:"l"+Date.now(), ...c, actorId:actorId(), userId:null, avatar:myAvatar()});
@@ -235,12 +231,8 @@ CASES.forEach(c=>{
   }));
 });
 
-const stanceKey = (caseId, text) => caseId+"|"+text.slice(0,60);
-function rememberStance(caseId, text, stance){ const m = lsJson("lj_stance"); m[stanceKey(caseId,text)] = stance; lsJson("lj_stance", m); }
-const stanceOf = cm => cm.stance || lsJson("lj_stance")[stanceKey(cm.caseId, cm.text)] || null;
-
 const mineComments = id => store.comments.filter(c=>c.caseId===id)
-  .map(c=>({...c, stance: stanceOf(c), replies:[]}));
+  .map(c=>({...c, stance:null, replies:[]}));
 /* newest first, with the seeded thread underneath anything written today */
 const commentsFor = id => [...mineComments(id), ...seeded[id]].sort((a,b)=>b.createdAt-a.createdAt);
 const commentTotal = id => (DISCUSSION[id]?.total || 0) + store.comments.filter(c=>c.caseId===id).length;
@@ -248,11 +240,9 @@ const likeCount = cm => (cm.seedLikes||0)
   + (cm.seed ? (lsJson("lj_seedlike")[cm.id] ? 1 : 0) : Object.values(cm.likes||{}).filter(Boolean).length);
 const likedByMe = cm => cm.seed ? !!lsJson("lj_seedlike")[cm.id] : !!(cm.likes && cm.likes[actorId()]);
 
-/* the community pulse: the platform-scale stance counts, plus anything
-   written in this browser since */
+/* the community pulse: how the discussion is split, at platform scale */
 function pulseFor(id){
   const base = {...(DISCUSSION[id]?.pulse || {support:0,question:0,skeptical:0})};
-  mineComments(id).forEach(c=>{ if(c.stance && base[c.stance]!==undefined) base[c.stance]++; });
   const total = base.support+base.question+base.skeptical || 1;
   return {...base, total, supportPct: Math.round(base.support/total*100), questionPct: Math.round(base.question/total*100),
           skepticalPct: Math.round(base.skeptical/total*100)};
@@ -297,27 +287,55 @@ function refresh(){
    file plays in the same frame, with the progress bar and captions following
    the video's own clock instead of the beat timer. Nothing else changes,
    which is how the real clips will drop in. */
-function clipHTML(src, inner="", note=""){
+function clipHTML(src, inner=""){
   const beats = src.beats || [];
+  /* A real file plays as a video. Without one the clip is still built like
+     footage rather than like a caption card: the case photograph sits behind
+     the type on a slow push-in, under grain and a vignette, so the section
+     reads as a clip reel while the real files are being shot. */
   const media = src.video
     ? `<video class="vid" src="${esc(src.video)}"${src.poster?` poster="${esc(src.poster)}"`:""} playsinline muted loop preload="metadata"></video>`
-    : "";
+    : src.photo
+      ? `<img class="stage-photo fb" alt="" src="${esc(src.photo)}">`
+      : "";
   return `<div class="frame">
-    <div class="stage" style="--cat:${CATS[src.cat].color}">${media}</div>
+    <div class="stage${src.video?"":" lens"}" style="--cat:${CATS[src.cat].color};--kb:${src.kb||0}">${media}<span class="grain"></span></div>
     <div class="segs">${beats.map(()=>'<div class="seg"><i></i></div>').join("")}</div>
-    ${src.video||!note?"":`<div class="clip-note">${esc(note)}</div>`}
-    ${beats.length?`<div class="caption" aria-live="off"><p class="enter"><span>${esc(beats[0])}</span></p></div>`:""}
+    ${beats.length && !src.video ?`<div class="caption" aria-live="off"><p class="enter"><span>${esc(beats[0])}</span></p></div>`:""}
     <button class="tap" aria-label="Pause or play clip"></button>
     <div class="pause-ico"><div>${icons.play}</div></div>
     ${inner}</div>`;
 }
 class Clip{
-  constructor(root, src){ this.root=root; this.beats=src.beats||[]; this.span=BEAT_MS*Math.max(1,this.beats.length);
+  constructor(root, src){ this.root=root; this.src=src; this.beats=src.beats||[]; this.span=BEAT_MS*Math.max(1,this.beats.length);
     this.t=0; this.beat=-1; this.playing=false; this.userPaused=false; this.last=performance.now();
     this.p=root.querySelector(".caption p"); this.segs=[...root.querySelectorAll(".seg i")];
     this.stage=root.querySelector(".stage"); this.video=root.querySelector("video");
     root.querySelector(".tap").addEventListener("click",()=>{ this.userPaused=!this.userPaused; this.userPaused?this.pause():this.play(); });
+    /* A video that will not load must not leave a black rectangle on the
+       screen. It is dropped and the clip falls back to the treatment it would
+       have had with no file at all, captions included. */
+    if(this.video) this.video.addEventListener("error", ()=>this.degrade(), {once:true});
     this.show(0); }
+  degrade(){
+    if(!this.video) return;
+    this.video.remove(); this.video = null;
+    this.stage.classList.add("lens");
+    if(this.src.photo && !this.stage.querySelector(".stage-photo")){
+      const img = document.createElement("img");
+      img.className = "stage-photo fb"; img.alt = ""; img.src = this.src.photo;
+      this.stage.prepend(img);
+    }
+    if(this.beats.length && !this.p){
+      const cap = document.createElement("div");
+      cap.className = "caption"; cap.setAttribute("aria-live","off");
+      cap.innerHTML = '<p class="enter"><span></span></p>';
+      this.root.querySelector(".frame").insertBefore(cap, this.root.querySelector(".tap"));
+      this.p = cap.querySelector("p");
+      this.beat = -1; this.show(Math.min(this.beats.length-1, Math.floor(this.t/BEAT_MS)));
+    }
+    this.t = 0; this.last = performance.now();
+  }
   show(i){ if(!this.p || i===this.beat) return; this.beat=i; this.p.classList.remove("lit","enter"); this.p.firstChild.textContent=this.beats[i];
     void this.p.offsetWidth; this.p.classList.add("enter"); requestAnimationFrame(()=>requestAnimationFrame(()=>this.p.classList.add("lit"))); }
   play(){ if(this.userPaused) return; this.playing=true; this.stage.classList.remove("paused"); this.last=performance.now();
@@ -336,8 +354,12 @@ const clips = new Set();
 
 /* a case's own hero clip, and the short clips in its clip section, are the
    same kind of thing to the player */
-const caseClip = c => ({beats:c.beats, video:c.video, poster:c.poster, cat:c.cat});
-const shortClip = (c, k) => ({...c.clips[k], cat:c.cat});
+const caseClip = c => ({beats:c.beats, video:c.video, poster:c.poster, cat:c.cat,
+                        photo: c.hero && c.hero.src, kb:0});
+/* each short clip frames the photograph differently, so a rail of five does
+   not look like the same still five times */
+const shortClip = (c, k) => ({...c.clips[k], video:c.clips[k].src, cat:c.cat,
+                              photo: c.clips[k].poster || (c.hero && c.hero.src), kb:(k%4)+1});
 
 /* ============ badges ============ */
 function trendBadge(c, cls=""){
@@ -369,7 +391,7 @@ function renderFeed(){
             <div class="nums"><span><b data-raised-s="${c.id}"></b> of ${usdShort(c.goal)}</span><span data-backers="${c.id}"></span></div>
           </div></div>
         <button class="more-btn" data-act="details">See the full case</button>
-      </div>`, "Clip preview for "+c.ngo)}
+      </div>`)}
     <div class="rail">
       <button data-act="pledge"><span class="ic pledge">${icons.pledge}</span>Pledge</button>
       <button data-act="discuss"><span class="ic">${icons.chat}</span><span data-ccount="${c.id}">0</span></button>
@@ -527,14 +549,12 @@ const SECTIONS = [["s-why","Why"],["s-talk","Discussion"],["s-time","Timeline"],
 function scoreHeadline(c){
   const m = meritScore(c), i = impactScore(c);
   return `<div class="shead">
-    <div class="shead-dial">${gauge(96,m,i)}<span class="shead-demo">demo model</span></div>
+    <div class="shead-dial">${gauge(96,m,i)}</div>
     <div class="shead-rows">
       <button class="shead-row m" data-score="merit">
-        <b>${m}</b><span class="shead-lab">Chance to win</span>
-        <small>If fully funded. Not a promise.</small></button>
+        <b>${m}</b><span class="shead-lab">Chance to win</span></button>
       <button class="shead-row i" data-score="impact">
-        <b>${i}</b><span class="shead-lab">Social impact</span>
-        <small>How much it matters beyond the plaintiffs.</small></button>
+        <b>${i}</b><span class="shead-lab">Social impact</span></button>
     </div>
     <button class="shead-more" data-score="merit">See how both are built ${icons.back}</button>
   </div>`;
@@ -601,20 +621,22 @@ function talkHTML(c){
 
     <div class="talkstats">
       <div class="pulsebox reveal">
-        <div class="ph">Community pulse<span class="demo">demo data</span></div>
+        <div class="ph">Community pulse</div>
+        <p class="psub">How <b data-ccount="${c.id}">0</b> comments break down.</p>
         ${pulseUnits(p)}
         <div class="pkey">
-          <span class="pk st-support"><i></i><b>${p.supportPct}%</b> support</span>
-          <span class="pk st-question"><i></i><b>${p.questionPct}%</b> asking</span>
-          <span class="pk st-skeptical"><i></i><b>${p.skepticalPct}%</b> sceptical</span>
+          <span class="pk st-support"><i></i><b>${p.supportPct}%</b> support<small>${num(p.support)}</small></span>
+          <span class="pk st-question"><i></i><b>${p.questionPct}%</b> asking<small>${num(p.question)}</small></span>
+          <span class="pk st-skeptical"><i></i><b>${p.skepticalPct}%</b> sceptical<small>${num(p.skeptical)}</small></span>
         </div>
       </div>
       <div class="csbox reveal">
-        <div class="ph">Community Score<span class="demo">demo data</span></div>
+        <div class="ph">Community Score</div>
+        <p class="psub">What backers and readers rate it, out of five.</p>
         <div class="cs-main">
           <div class="cs-n"><b>${cs.avg}</b><span>/5</span></div>
           <div class="cs-side">${ratingDots(cs.avg)}
-            <small>${num(cs.n)} ratings · ${cs.positive}% gave it 4 or 5</small></div>
+            <small>${num(cs.n)} ratings · ${cs.positive}% rated 4 or 5</small></div>
           <div class="cs-comb">${ratingComb(cs.counts)}<span class="cs-axis"><i>1</i><i>5</i></span></div>
         </div>
         <button class="btn ghost sm" id="rateBtn">${cs.mine?`You rated it ${cs.mine.stars}. Change`:"Rate this case"}</button>
@@ -647,7 +669,7 @@ function returnHTML(c, amount=100){
   return `<section class="sec" id="s-return">
     <div class="sec-head"><h2 class="sec-h">What a pledge could return</h2>
       <span class="sec-meta">Not a guarantee</span></div>
-    <p class="sec-sub">Three ways this case can end. The thickness of each path is how likely it is; where it lands is what it pays. These are estimates on a demo model and they move as the case does.</p>
+    <p class="sec-sub">Three ways this case can end. The thickness of each path is how likely it is; where it lands is what it pays. These are estimates, and they move as the case does.</p>
     <div class="amt-pick" role="group" aria-label="Pledge amount to model">${[25,100,250,1000].map(a=>
       `<button data-fa="${a}" aria-pressed="${a===amount}">$${num(a)}</button>`).join("")}</div>
     <div class="fanbox reveal" id="fanBox">${outcomeFan(c, amount)}</div>
@@ -668,11 +690,10 @@ function clipsHTML(c){
   return `<section class="sec" id="s-clips">
     <div class="sec-head"><h2 class="sec-h">Clips</h2><span class="sec-meta">${c.clips.length} · 60 seconds or less</span></div>
     <div class="cliprail">${c.clips.map((cl,k)=>`
-      <button class="clipcard" data-clip="${k}" style="--i:${k}">
-        <span class="cc-art">${heroArt(c,k+3)}
+      <button class="clipcard" data-clip="${k}" style="--i:${k};--kb:${(k%4)+1}">
+        <span class="cc-art">${artOf(c,k+3)}
           <span class="cc-play">${icons.playSm}</span>
-          <span class="cc-time">${mmss(cl.secs)}</span>
-          ${cl.src?"":`<span class="cc-soon">Preview</span>`}</span>
+          <span class="cc-time">${mmss(cl.secs)}</span></span>
         <span class="cc-t">${esc(cl.title)}</span>
         <span class="cc-m">${esc(mm(cl.milestone))}</span>
       </button>`).join("")}</div>
@@ -912,7 +933,6 @@ function openScore(id, tab="merit"){
       <div class="wfbox reveal">${waterfall(c)}</div>
       <div class="sp-note" id="wfNote"><b>Cases like this</b><span>${esc(c.merit.baseNote)}</span></div>
       <p class="sp-fine">Assumes the case is fully funded, and says nothing about how much the case matters — that is the impact score, which is computed separately and never mixed in.</p>
-      <div class="demo-note">${icons.info}<span><b>Demo model.</b> These factors and weights are placeholders for the scoring model described in the business plan. No real case data has been used and nothing here is a prediction.</span></div>
     </section>
 
     <section class="sp-panel" id="sp-impact" ${tab==="impact"?"":"hidden"}>
@@ -922,7 +942,6 @@ function openScore(id, tab="merit"){
         ${bloomLegend(c)}
       </div>
       <div class="sp-note" id="blNote"><b>Tap a petal</b><span>Each one explains what it measured and why it scored the way it did.</span></div>
-      <div class="demo-note">${icons.info}<span><b>Demo model.</b> Weights are illustrative. In production these come from the impact framework in the business plan and are reviewed case by case.</span></div>
     </section>
   </div>`;
 
@@ -960,15 +979,16 @@ function openScore(id, tab="merit"){
   go("score");
 }
 
-/* ============ discussion ============ */
-const STANCES = [["support","Support"],["question","Question"],["skeptical","Sceptical"]];
+/* ============ discussion ============
+   Nobody is asked to tag their own comment. The seeded threads carry a stance
+   because they are written content, and the community pulse reads those; a
+   comment written here is left untagged until the stance is derived from the
+   text itself. */
 function composerHTML(id){
   return `<div class="composer">
     <textarea rows="2" maxlength="600" placeholder="What do you make of this case?" aria-label="Write a comment"></textarea>
     <div class="composer-foot">
-      <div class="stancepick" role="radiogroup" aria-label="How would you tag this comment?">
-        ${STANCES.map(([k,l],i)=>`<button class="st-${k}" data-stance="${k}" role="radio" aria-checked="${i===0}"><i></i>${l}</button>`).join("")}
-      </div>
+      <span class="composer-hint">Backers and readers both welcome.</span>
       <button class="btn ghost" data-post="${id}">Post</button>
     </div>
     <div class="err" data-cerr></div>
@@ -977,11 +997,6 @@ function composerHTML(id){
 function wireComposer(root, id){
   const ta = root.querySelector(".composer textarea"), btn = root.querySelector("[data-post]"), err = root.querySelector("[data-cerr]");
   if(!ta) return;
-  let stance = "support";
-  root.querySelectorAll("[data-stance]").forEach(b=>b.addEventListener("click",()=>{
-    stance = b.dataset.stance;
-    root.querySelectorAll("[data-stance]").forEach(x=>x.setAttribute("aria-checked", x===b));
-  }));
   btn.addEventListener("click", async ()=>{
     const text = ta.value.trim();
     if(!text){ err.textContent="Write something before posting."; return; }
@@ -989,7 +1004,7 @@ function wireComposer(root, id){
     if(!name){ openNameThen(()=>btn.click()); return; }
     btn.disabled=true; err.textContent="";
     try{
-      await addComment({caseId:id, name, text, stance, createdAt:Date.now(), backer: backedByMe(id), likes:{}});
+      await addComment({caseId:id, name, text, createdAt:Date.now(), backer: backedByMe(id), likes:{}});
       ta.value=""; toast("Comment posted");
     }catch(e){ err.textContent = "Couldn't post. Check your connection and try again."; }
     btn.disabled=false;
@@ -1073,7 +1088,7 @@ function openClipViewer(c, k){
   const milestone = k<0 ? "" : (c.timeline[c.clips[k].milestone]||[])[0] || "";
   openSheet(`<div class="cv">
     <div class="cv-head"><b>${esc(title)}</b>${milestone?`<small>${esc(milestone)}</small>`:""}</div>
-    <div class="cv-frame reel">${clipHTML(src, "", src.src?"":"Animated preview — the real clip drops in here")}</div>
+    <div class="cv-frame reel">${clipHTML(src)}</div>
     <div class="cv-foot">
       <button class="btn ghost sm" id="cvPledge">Pledge</button>
       <div class="cv-strip">${c.clips.map((cl,i)=>`<button class="${i===k?"on":""}" data-cv="${i}" aria-label="${esc(cl.title)}"></button>`).join("")}</div>
@@ -1089,7 +1104,7 @@ function openVetting(c){
   openSheet(`<h2 id="sheetTitle">${icons.shield} Vetted by LaunchJustice</h2>
     <p class="sub">Checked on ${esc(c.vetted)} before this case was listed. Every case on the platform passes the same five.</p>
     <ol class="vet">${VETTING.map(([t,d])=>`<li><b>${esc(t)}</b><span>${esc(d)}</span></li>`).join("")}</ol>
-    <div class="notice">Vetting is a check on the people and the paperwork. It is not an opinion on whether the case will win — that is what the chance-to-win score is for, and it is a demo model.</div>
+    <div class="notice">Vetting is a check on the people and the paperwork. It is not an opinion on whether the case will win — that is what the chance-to-win score is for.</div>
     <button class="btn primary" id="vetClose">Got it</button>`);
   $("#vetClose").onclick = closeSheet;
 }
@@ -1103,7 +1118,7 @@ function openRate(id){
     <div class="ratebox">${ratingDots(stars, true)}<span class="rate-word" id="rw">${["","Not for me","Has problems","Worth watching","Strong case","Back it now"][stars]||"Tap to rate"}</span></div>
     <label class="f" for="rvw">Add a short review <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
     <textarea class="inp" id="rvw" rows="3" maxlength="400" placeholder="What made it a ${stars||4} for you?">${esc(cs.mine?cs.mine.text||"":"")}</textarea>
-    <div class="notice">Ratings combine into the Community Score, the same way a review site works. Backers and non-backers are counted separately in the breakdown.</div>
+    <div class="notice">Ratings combine into the Community Score, the same way a review site works.</div>
     <div class="err" id="rErr"></div>
     <button class="btn primary" id="rGo">Submit rating</button>`);
   const words = ["","Not for me","Has problems","Worth watching","Strong case","Back it now"];
@@ -1119,7 +1134,7 @@ function openRate(id){
     const m = myRatings(); m[id] = {stars, text}; lsJson("lj_rating", m);
     if(text){
       const name = getName() || "Backer";
-      try{ await addComment({caseId:id, name, text:`Rated ${stars}/5. ${text}`, stance: stars>=4?"support":stars<=2?"skeptical":"question",
+      try{ await addComment({caseId:id, name, text:`Rated ${stars}/5. ${text}`,
                              createdAt:Date.now(), backer: backedByMe(id), likes:{}}); }catch(e){}
     }
     closeSheet(); toast("Rating saved");
@@ -1169,7 +1184,7 @@ function openPledge(id){
   <div class="money" style="margin-top:8px"><span>$</span><input class="inp" id="pAmt" inputmode="numeric" placeholder="Other amount" aria-label="Other amount"></div>
   <div class="f" style="margin-bottom:8px">If the case ends&hellip; <button class="link sm" id="pSplit">how the split works</button></div>
   <div id="pOut">${outcomeStrip(c, amt)}</div>
-  <p class="hint">Estimates on a demo model. Returns are never guaranteed, and a loss returns nothing.</p>
+  <p class="hint">Returns are never guaranteed, and a loss returns nothing.</p>
   <label class="f" for="pNote">Message to the legal team <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
   <textarea class="inp" id="pNote" rows="2" maxlength="280" placeholder="Why you're backing this case"></textarea>
   <label class="check"><input type="checkbox" id="pPublic" checked> Show my name to other backers</label>
@@ -1416,7 +1431,7 @@ function renderMine(){
         <div class="pp pp-set"><small>If all settled</small><b>${usd(proj.settle)}</b></div>
         <div class="pp pp-lose"><small>If all lost</small><b>$0</b></div>
       </div>
-      <p class="port-note">Demo model. Outcomes are estimates, never a promise, and no money has moved.</p>
+      <p class="port-note">Outcomes are estimates, never a promise, and no money has moved.</p>
     </div>`:""}
     <div class="live" style="margin:4px 0 10px"><i></i><span></span></div>
     ${mine.length? mine.map(p=>{ const c=byId[p.caseId]; if(!c) return ""; const o=outcomeFor(c,+p.amount||0);
