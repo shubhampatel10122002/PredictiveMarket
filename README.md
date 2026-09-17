@@ -1,15 +1,21 @@
-# LaunchJustice MVP
+# LaunchJustice
 
-A no-build, static web app for discovering and pledging to public-interest legal cases.
+A no-build, static web app for discovering and pledging to public-interest legal
+cases, written to show the product running at full scale.
 
-- **Watch**: vertical feed of 60-second case clips
-- **Cases**: search and filter by issue
-- **Case page**: story, court, stage, budget, timeline, updates, discussion
-- **Pledge**: name + amount, no payment taken
+- **Watch**: vertical feed of 60-second case clips, trending cases first
+- **Cases**: platform totals, a live activity ticker, a "Trending now" rail, search and filters
+- **Case page**: an interactive banner, a rolling comment highlight, why-it-matters
+  stats, both headline scores, the discussion, the lock-in and stage runway, the
+  outcome fan, the clip rail, the people, and the filings underneath
+- **Score breakdown**: a waterfall for chance-to-win and a bloom for social impact
+- **Pledge**: lock-in and the three outcomes shown in the flow, no payment taken
 - **Accounts**: email sign-up or Continue with Google, entirely optional
-- **My pledges**: totals for this account, or for this browser when signed out
+- **My pledges**: a small portfolio with what it returns if every case wins, settles or loses
 
-The cases in `app.js` (`CASES`) are fictional demo data. Replace them with real NGO cases.
+Everything in `data.js` is fictional: the cases, the people, the discussion, the
+scores and the numbers. It is written the way a platform with a couple of million
+members would look, so the product can be shown rather than described.
 
 ## Files
 
@@ -17,9 +23,91 @@ The cases in `app.js` (`CASES`) are fictional demo data. Replace them with real 
 | --- | --- |
 | `index.html` | Page shell |
 | `styles.css` | All styling (phone, tablet and laptop; light and dark mode) |
-| `app.js` | Case data, UI, and data layer |
+| `data.js` | The demo content and the score model |
+| `viz.js` | Every chart, drawn as inline SVG |
+| `app.js` | State, screens and interaction |
 | `config.js` | Supabase project URL and publishable key |
 | `supabase/schema.sql` | Tables, row level security policies and grants |
+
+## The two scores
+
+Every case carries two numbers, shown together everywhere as one dial: the outer
+arc is the **chance to win**, the inner arc is **social impact**. They are
+deliberately separate. A case can be very likely to win and matter to forty
+people; another can be a long shot that would change the law for a state.
+
+Neither is typed into the data. Chance to win is the base rate for cases of that
+kind plus a delta for every factor (claim type, jurisdiction, judge, attorney
+record, defendant, evidence, supporting cases, merits). Social impact is the
+weighted mean of its factors (people affected, severity, lasting change, public
+attention, community support). Change a factor in `data.js` and every screen that
+shows a score changes with it.
+
+The breakdown screen explains each one as a picture, not as a table of bars:
+
+- **Chance to win** is a horizontal **waterfall**. It starts at how often similar
+  cases win, then steps up in green and down in red for each factor, and lands on
+  this case's number. Tap any row for why that factor moved it.
+- **Social impact** is a **bloom**. The circle is the most a case could matter.
+  Each petal is one factor: its *width* is the weight, its *reach* is the score.
+  Petal radius is set to the square root of the score, so petal area is weight
+  times score, and the share of the circle that fills in is the composite number
+  exactly. The whole model is one shape.
+
+Both are labelled **Demo model** wherever they appear. They are placeholders for
+the scoring model in the business plan, not predictions.
+
+## Returns and the lock-in
+
+Returns are a separate component from the scores, and they never claim a number
+is guaranteed.
+
+- The **runway** is one rail that answers two questions at once: each of the six
+  stages (Pre-filing, Pleadings, Discovery, Trial, Decision, Appeal) is drawn as
+  wide as it is long, so where the case is *and* how long is left are the same
+  picture. The lock sits on the end date.
+- The **outcome fan** shows one pledge splitting three ways. Branch thickness is
+  how likely each ending is, and where it lands is what it pays.
+- The **split ribbon** shows the payout from the plan: about 53% to the plaintiff,
+  6% to LaunchJustice (a 5% platform fee plus a 1% contingent return), 41% to
+  backers in proportion to what each put in, with roughly 3% of every pledge going
+  to payment processing before it reaches the case.
+
+`outcomeFor()` in `data.js` is the single place this is computed. Each case sets
+an `awardMult` (expected award as a multiple of its funding goal), which is what
+makes one case return more per dollar than another.
+
+## Discussion
+
+The discussion sits third on the case page, not behind a tab, and a rolling
+highlight above it puts one real voice on screen within a second of arriving.
+
+- Every case ships with a seeded thread in `SEED_COMMENTS`: people backing it,
+  people asking, people pushing back, and the legal team answering in public.
+- Commenters tag a comment **Support**, **Question** or **Sceptical**, and the
+  **community pulse** shows the split as a crowd of ticks rather than a bar.
+- The **Community Score** is a five-point rating with an optional review, combined
+  into one number the way a review site works.
+
+Stance tags and ratings are kept in the browser for the demo, because the shipped
+`supabase/schema.sql` has no column for either. Add `stance` to `comments` and a
+`ratings` table before this is real; `addComment()` marks the spot.
+
+## Clips and photographs
+
+Each case has several short vertical clips in `clips[]`, tied to timeline
+milestones, plus the 60-second hero clip.
+
+- Give a clip a `src` (a video file or URL) and optionally a `poster`, and it
+  plays in the same frame with the progress bar and captions following the
+  video's clock instead of the beat timer. Nothing else has to change.
+- Until then each clip plays as an animated caption card built from its `beats`,
+  so the section is fully laid out and ready for the files.
+- `hero.src` on each case points at a stock photograph. Every photograph on the
+  site sits on top of generated artwork in the case's colour, and removes itself
+  if it fails to load, so a dead URL or a flight with no wifi shows intentional
+  artwork rather than a broken image. Replace these with licensed photography
+  before this goes in front of the public.
 
 ## Run locally
 
@@ -242,18 +330,36 @@ account, or a reset from the dashboard.
 
 ## Adding real video
 
-Each case's clip is rendered from its `beats` captions until you give the case
-a video. Add a `video` (and optionally a `poster`) to any case in `CASES`:
+Every clip renders from its `beats` captions until you give it a file. The hero
+clip takes `video` and `poster` on the case itself; the short clips take the
+same two keys on each entry in `clips[]`:
 
 ```js
-{id:"asylum-backlog", cat:"immigration", video:"clips/asylum.mp4", poster:"clips/asylum.jpg", ...}
+{id:"asylum-backlog", cat:"immigration",
+ video:"clips/asylum-hero.mp4", poster:"clips/asylum-hero.jpg",
+ clips:[
+   {id:"a1", title:"Meet Maria", milestone:0, secs:58,
+    src:"clips/asylum-maria.mp4", poster:"clips/asylum-maria.jpg", beats:[...]},
+ ], ...}
 ```
 
 The file then plays muted, looping and inline in the same frame, and the
 progress bar and captions follow the video's clock instead of the beat timer.
-Shoot vertical: the frame is 9:16 and anything else gets cropped to fill.
-Cases with and without video can sit in the same feed.
+Shoot vertical: the frame is 9:16 and anything else gets cropped to fill. Clips
+with and without a file can sit in the same rail, and `milestone` is the index
+into `timeline[]` that decides which case milestone a clip is offered from.
+
+## Notes on the demo
+
+- Charts draw themselves when they first scroll into view, and draw finished
+  with no animation when the operating system asks for reduced motion.
+- Nothing is loaded from a chart library or an animation framework. The charts
+  are inline SVG built in `viz.js`, animated with CSS and the Web Animations
+  API, so the site works with no network beyond the page itself.
+- Stance tags, ratings and likes on seeded comments are per-browser. Real
+  comments, pledges and likes go to Supabase exactly as before.
 
 ## Not in this version
 
-No accounts, payments, KYC, or moderation. Pledges are non-binding.
+No payments, KYC, or moderation. Pledges are non-binding, and the scores are a
+demo model, not a prediction.
