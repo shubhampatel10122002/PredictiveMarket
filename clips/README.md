@@ -5,14 +5,20 @@ Short vertical video for the case pages. Everything here is 9:16 — the frame i
 
 ## What is in here now
 
-Nothing filmed yet. Every case plays its clip card: the case photograph on a
-slow push-in, under grain and a vignette, with the beats set over it.
+Six files for **maple-evictions**: the hero clip and its five short ones,
+rendered from the case's own beats by `tools/render-clips.js`. They are real
+MP4s played through the real `<video>` path, and they are placeholders for
+filmed footage rather than a substitute for it. Replace them as clips are shot.
 
-`tools/render-clips.js` turns a case's beats into real MP4 files, so the
-`<video>` path can be exercised with actual files. What it makes is a
-placeholder for filmed footage, not a substitute for it. Clips with a file and
-clips without sit in the same rail, which is what the product looks like while
-content is being made.
+Every other case plays its clip card instead: the case photograph on a slow
+push-in, under grain and a vignette, with the beats set over it. Clips with a
+file and clips without sit in the same rail, which is what the product looks
+like while content is being made.
+
+A rendered clip carries no wordmark, no progress bar and no credit, because
+the app draws all three over whatever it plays. Frame real footage the same
+way: the app's furniture sits along the bottom of the feed and down the right,
+so keep the bottom third and the right edge clear.
 
 ## Adding a real clip
 
