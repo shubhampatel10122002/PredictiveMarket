@@ -86,10 +86,13 @@ document.addEventListener("load", e=>{
   const t = e.target;
   if(t.tagName === "IMG" && t.classList.contains("fb")) t.classList.add("on");
 }, true);
-/* generated artwork with the real photograph over it, wherever a case is
-   shown as a picture */
-const artOf = (c, seed) => heroArt(c, seed) +
-  (c.hero ? `<img class="fb" alt="" loading="lazy" src="${esc(c.hero.src)}">` : "");
+/* generated artwork with a photograph over it, wherever a case is shown as a
+   picture. `photo` overrides the case's own hero image, which is how a clip
+   card ends up showing that clip's still rather than the case banner. */
+const artOf = (c, seed, photo) => {
+  const src = photo || (c.hero && c.hero.src);
+  return heroArt(c, seed) + (src ? `<img class="fb" alt="" loading="lazy" src="${esc(src)}">` : "");
+};
 
 /* ============ accounts ============
    Accounts are optional. A signed-out visitor acts as their browser
@@ -702,12 +705,13 @@ function returnHTML(c, amount=100){
 function clipsHTML(c){
   const mm = i => (c.timeline[i] && c.timeline[i][0]) || "Case file";
   return `<section class="sec" id="s-clips">
-    <div class="sec-head"><h2 class="sec-h">Clips</h2><span class="sec-meta">${c.clips.length} · 60 seconds or less</span></div>
+    <div class="sec-head"><h2 class="sec-h">Clips</h2><span class="sec-meta">${c.clips.length} clips</span></div>
     <div class="cliprail">${c.clips.map((cl,k)=>`
       <button class="clipcard" data-clip="${k}" style="--i:${k};--kb:${(k%4)+1}">
-        <span class="cc-art">${artOf(c,k+3)}
+        <span class="cc-art">${artOf(c, k+3, cl.poster)}
           <span class="cc-play">${icons.playSm}</span>
-          <span class="cc-time">${mmss(cl.secs)}</span></span>
+          ${cl.embed ? `<span class="cc-src">${esc(cl.credit || "Embedded")}</span>`
+                     : `<span class="cc-time">${mmss(cl.secs)}</span>`}</span>
         <span class="cc-t">${esc(cl.title)}</span>
         <span class="cc-m">${esc(mm(cl.milestone))}</span>
       </button>`).join("")}</div>
@@ -1099,9 +1103,11 @@ function openClipViewer(c, k){
   const src = k<0 ? caseClip(c) : shortClip(c, k);
   const title = k<0 ? "The case in 60 seconds" : c.clips[k].title;
   const milestone = k<0 ? "" : (c.timeline[c.clips[k].milestone]||[])[0] || "";
+  const tie = src.embed && src.beats && src.beats.length ? src.beats[0] : "";
   openSheet(`<div class="cv">
     <div class="cv-head"><b>${esc(title)}</b>${milestone?`<small>${esc(milestone)}</small>`:""}</div>
     <div class="cv-frame reel">${clipHTML(src)}</div>
+    ${tie?`<p class="cv-tie">${esc(tie)}${src.credit?`<span>via ${esc(src.credit)}</span>`:""}</p>`:""}
     <div class="cv-foot">
       <button class="btn ghost sm" id="cvPledge">Pledge</button>
       <div class="cv-strip">${c.clips.map((cl,i)=>`<button class="${i===k?"on":""}" data-cv="${i}" aria-label="${esc(cl.title)}"></button>`).join("")}</div>
@@ -1156,19 +1162,21 @@ function openRate(id){
 }
 
 /* how the money splits, opened from the pledge sheet */
-function openSplit(c){
+function openSplit(c, back){
   const o = outcomeFor(c, 100);
-  openSheet(`<h2 id="sheetTitle">Where the money goes</h2>
+  openSheet(`${back?`<button class="sheet-back" id="spBack">${icons.back}Back to your pledge</button>`:""}
+    <h2 id="sheetTitle">Where the money goes</h2>
     <p class="sub">The same split on every case.</p>
-    <div class="splitbox in">${splitRibbon()}</div>
+    <div class="splitbox in" style="--cat:${CATS[c.cat].color}">${splitRibbon()}</div>
     <ul class="splitlist">
       <li><b>53%</b> to the plaintiff. They carry the case and the risk.</li>
       <li><b>6%</b> to LaunchJustice — a 5% platform fee and a 1% contingent return, paid only when a case wins.</li>
       <li><b>41%</b> to backers, split in proportion to what each person put in.</li>
     </ul>
     <div class="notice">About 3% of every pledge goes to payment processing before it reaches the case. On this case a $100 pledge would return roughly $${num(o.win)} on a win, nothing on a loss, and about $${num(o.settle)} on a typical settlement.</div>
-    <button class="btn primary" id="spClose">Close</button>`);
-  $("#spClose").onclick = closeSheet;
+    <button class="btn primary" id="spClose">${back?"Back to your pledge":"Close"}</button>`);
+  $("#spClose").onclick = back || closeSheet;
+  const bb = $("#spBack"); if(bb) bb.onclick = back;
 }
 
 /* ============ pledge ============
@@ -1184,33 +1192,40 @@ function outcomeStrip(c, amt){
       <span class="os-l">${l}</span><span class="os-p">${Math.round(p*100)}%</span>
       <b class="os-v">${v?"$"+num(v):"$0"}</b></div>`).join("")}</div>`;
 }
-function openPledge(id){
-  const c = byId[id]; let amt = 100;
+function openPledge(id, prefill){
+  const c = byId[id];
+  const was = prefill || {};
+  const PRESETS = [25,50,100,250];
+  let amt = was.amt > 0 ? was.amt : 100;
+  const custom = was.amt > 0 && !PRESETS.includes(was.amt);
   openSheet(`<h2 id="sheetTitle">Pledge to this case</h2>
   <p class="sub">${esc(c.head)}</p>
   <div class="lockstrip">${icons.lock}<span><b>Locked about ${lockYears(c)} years</b>, expected to end ${endYear(c)}. No early withdrawals.</span></div>
   <label class="f" for="pName">Your name</label>
-  <input class="inp" id="pName" maxlength="40" autocomplete="name" value="${esc(getName())}" placeholder="First and last name">
+  <input class="inp" id="pName" maxlength="40" autocomplete="name" value="${esc(was.name !== undefined ? was.name : getName())}" placeholder="First and last name">
   ${signedIn()?"":`<p class="hint">Pledging as a guest. <button class="link" data-auth="in">Sign in</button> and your pledges follow you to any device.</p>`}
   <label class="f" id="amtLbl">Amount</label>
-  <div class="amts" role="group" aria-labelledby="amtLbl">${[25,50,100,250].map(a=>`<button data-a="${a}" aria-pressed="${a===amt}">$${a}</button>`).join("")}</div>
-  <div class="money" style="margin-top:8px"><span>$</span><input class="inp" id="pAmt" inputmode="numeric" placeholder="Other amount" aria-label="Other amount"></div>
+  <div class="amts" role="group" aria-labelledby="amtLbl">${PRESETS.map(a=>`<button data-a="${a}" aria-pressed="${!custom && a===amt}">$${a}</button>`).join("")}</div>
+  <div class="money" style="margin-top:8px"><span>$</span><input class="inp" id="pAmt" inputmode="numeric" placeholder="Other amount" aria-label="Other amount" value="${custom?amt:""}"></div>
   <div class="f" style="margin-bottom:8px">If the case ends&hellip; <button class="link sm" id="pSplit">how the split works</button></div>
   <div id="pOut">${outcomeStrip(c, amt)}</div>
   <p class="hint">Returns are never guaranteed, and a loss returns nothing.</p>
   <label class="f" for="pNote">Message to the legal team <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
-  <textarea class="inp" id="pNote" rows="2" maxlength="280" placeholder="Why you're backing this case"></textarea>
-  <label class="check"><input type="checkbox" id="pPublic" checked> Show my name to other backers</label>
+  <textarea class="inp" id="pNote" rows="2" maxlength="280" placeholder="Why you're backing this case">${esc(was.note||"")}</textarea>
+  <label class="check"><input type="checkbox" id="pPublic"${was.pub===false?"":" checked"}> Show my name to other backers</label>
   <div class="notice">This is a pledge, not a payment. No money moves today. We'll contact you when payments open.</div>
   <div class="err" id="pErr"></div>
-  <button class="btn primary" id="pGo">Pledge $100</button>`);
+  <button class="btn primary" id="pGo">Pledge ${usd(amt)}</button>`);
   const goBtn=$("#pGo"), other=$("#pAmt"), outBox=$("#pOut");
   const setAmt = a => {
     amt = a;
     goBtn.textContent = a>0 ? `Pledge ${usd(a)}` : "Pledge";
     outBox.innerHTML = outcomeStrip(c, Math.max(1, a));
   };
-  $("#pSplit").addEventListener("click",()=>openSplit(c));
+  $("#pSplit").addEventListener("click",()=>{
+    const state = {name:$("#pName").value, amt, note:$("#pNote").value, pub:$("#pPublic").checked};
+    openSplit(c, ()=>openPledge(id, state));
+  });
   sheet.querySelectorAll("[data-a]").forEach(b=>b.addEventListener("click",()=>{
     other.value=""; sheet.querySelectorAll("[data-a]").forEach(x=>x.setAttribute("aria-pressed",x===b)); setAmt(+b.dataset.a);
   }));
