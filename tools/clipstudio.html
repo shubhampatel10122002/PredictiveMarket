@@ -29,24 +29,11 @@
   #scan{position:absolute;inset:0;opacity:.5;
     background-image:repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 1px, transparent 1px 64px);
     -webkit-mask-image:linear-gradient(180deg,#000,transparent 86%)}
-  /* progress segments */
-  #segs{position:absolute;top:34px;left:34px;right:34px;display:flex;gap:8px}
-  #segs div{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.24);overflow:hidden}
-  #segs i{display:block;height:100%;width:0;background:#fff}
-  /* brand */
-  #brand{position:absolute;top:66px;left:34px;font-weight:800;font-size:34px;letter-spacing:-.02em}
-  #brand span{background:#F2C230;color:#16202C;padding:0 7px;border-radius:5px;margin-left:2px}
   /* the beat */
-  #beat{position:absolute;left:44px;right:96px;top:22%;font-weight:800;font-size:62px;line-height:1.1;letter-spacing:-.02em}
+  #beat{position:absolute;left:44px;right:96px;top:26%;font-weight:800;font-size:62px;line-height:1.1;letter-spacing:-.02em}
   #beat b{font-weight:800;background-image:linear-gradient(#F2C230,#F2C230);background-repeat:no-repeat;
     background-size:0% 100%;background-position:0 0;padding:2px 8px;-webkit-box-decoration-break:clone;
     box-decoration-break:clone;color:#fff}
-  /* the credit rides under the brand, because the foot of the frame belongs
-     to whatever the app draws over the clip */
-  #lower{position:absolute;left:44px;right:44px;top:116px}
-  #lower .cat{display:inline-flex;align-items:center;gap:10px;font-size:21px;font-weight:600;color:#DCE4EE}
-  #lower .cat i{width:12px;height:12px;border-radius:50%;background:var(--cat)}
-  #lower .name{font-size:21px;font-weight:600;color:#9EAABA;margin-top:3px}
   /* end card */
   #end{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:flex-start;
     align-items:flex-start;padding:21% 56px 0;background:rgba(8,12,18,.88);opacity:0}
@@ -62,10 +49,7 @@
   <div id="scan"></div>
   <div id="vig"></div>
   <div id="grain"></div>
-  <div id="segs"></div>
-  <div id="brand">Launch<span>Justice</span></div>
   <div id="beat"><b></b></div>
-  <div id="lower"><div class="cat"><i></i><span></span></div><div class="name"></div></div>
   <div id="end"><h1></h1><p></p><span class="cta">Back this case</span></div>
 </div>
 
@@ -86,9 +70,6 @@ const col  = CATS[c.cat].color;
 
 document.documentElement.style.setProperty("--cat", col);
 document.getElementById("art").innerHTML = heroArtStudio(c);
-document.getElementById("segs").innerHTML = BEATS.map(()=>'<div><i></i></div>').join("");
-document.querySelector("#lower .cat span").textContent = CATS[c.cat].label;
-document.querySelector("#lower .name").textContent = c.ngo;
 document.querySelector("#end h1").textContent = c.head;
 document.querySelector("#end p").textContent = c.caseName;
 
@@ -113,11 +94,9 @@ function heroArtStudio(cs){
 
 const ease = t => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
 const beatEl = document.getElementById("beat"), markEl = beatEl.querySelector("b");
-const segs = [...document.querySelectorAll("#segs i")];
 const endEl = document.getElementById("end");
 const artEl = document.getElementById("art");
 const grainEl = document.getElementById("grain");
-const lowerEl = document.getElementById("lower");
 
 /* everything on screen, as a pure function of t */
 window.frame = function(t){
@@ -134,20 +113,12 @@ window.frame = function(t){
   markEl.style.backgroundSize = (ease(sweep)*100).toFixed(1)+"% 100%";
   markEl.style.color = sweep > 0.55 ? "#16202C" : "#fff";
 
-  segs.forEach((s,k)=>{
-    s.style.width = (k < bi ? 100 : k > bi ? 0 : Math.min(100, bt/BEAT*100)).toFixed(1)+"%";
-  });
-
   /* a slow push-in across the whole clip, so the frame is never still */
   const k = t/DUR;
   artEl.style.transform = `scale(${(1.03 + k*0.14).toFixed(4)}) translate3d(${(-k*1.6).toFixed(2)}%, ${(-k*2.4).toFixed(2)}%, 0)`;
   /* grain has to move or it reads as a texture rather than as film */
   const g = Math.floor(t*12) % 3;
   grainEl.style.transform = `translate3d(${[0,-2,1.6][g]}%, ${[0,1.5,-2][g]}%, 0)`;
-
-  const lowIn = ease((t-0.5)/0.7);
-  lowerEl.style.opacity = lowIn.toFixed(3);
-  lowerEl.style.transform = `translateY(${((1-lowIn)*18).toFixed(1)}px)`;
 
   const endT = t - BEATS.length*BEAT;
   endEl.style.opacity = endT > 0 ? ease(endT/0.5).toFixed(3) : 0;
