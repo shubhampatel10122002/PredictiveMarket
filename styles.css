@@ -63,9 +63,24 @@ img{max-width:100%}
 .frame{position:absolute;inset:0;overflow:hidden}
 .stage{position:absolute;inset:0;background:var(--feed)}
 .vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:var(--feed)}
-/* an embedded player fills the frame and keeps its own controls */
-iframe.vid{border:0;object-fit:unset}
+/* An embedded player fills the frame but never takes the pointer: its own
+   controls would swallow a vertical swipe, and the swipe is how you get to
+   the next clip. So the surface stays ours, and so does the sound button.
+   Until the iframe mounts, the slot holds the video's still. */
+iframe.vid{border:0;object-fit:unset;pointer-events:none}
 .stage.embedded::before,.stage.embedded::after{display:none}
+.slot{position:absolute;inset:0;background:var(--feed);overflow:hidden}
+.slot-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .5s}
+.slot-img.on{opacity:1}
+.slot-play{position:absolute;inset:0;margin:auto;width:66px;height:66px;border-radius:50%;
+  background:rgba(8,12,18,.42);backdrop-filter:blur(6px);display:grid;place-items:center;
+  transition:opacity .3s}
+.slot:has(iframe) .slot-play,.slot:has(iframe) .slot-img{opacity:0}
+.sound{position:absolute;top:60px;right:12px;z-index:4;display:inline-flex;align-items:center;gap:6px;
+  border:1px solid rgba(255,255,255,.26);background:rgba(8,12,18,.5);color:#fff;border-radius:99px;
+  padding:7px 13px 7px 10px;font-size:12.5px;font-weight:700;backdrop-filter:blur(10px)}
+.sound[aria-pressed="true"]{background:var(--hl);color:#16202C;border-color:transparent}
+.sound[aria-pressed="true"] svg path:last-child{display:none}
 /* A real clip brings its own grade. The colour wash, the scan lines and the
    moving grain are all treatments for a still, so they come off once there is
    footage; only the vignette stays, because the app still draws type over it. */
@@ -121,12 +136,17 @@ iframe.vid{border:0;object-fit:unset}
 .rail svg{width:22px;height:22px}
 .meta{position:absolute;left:0;right:0;bottom:0;padding:60px 84px 18px 18px;z-index:3;background:linear-gradient(transparent, rgba(8,12,18,.88) 45%)}
 .meta .org{font-size:14px;color:#C9D3DF;display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.vs-clip{display:flex;align-items:flex-start;gap:6px;color:#E4EAF2;font-weight:600}
+.vs-clip>svg{flex:none;margin-top:3px;color:var(--hl)}
+.vs-clip>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.vs-clip i{font-style:normal;font-weight:400;color:#93A0B1;font-size:12.5px;white-space:nowrap}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--cat);flex:none}
 .meta h2{margin:0 0 4px;font-size:20px;line-height:1.2;letter-spacing:-.01em}
 .meta .vs{font-size:14px;color:#AEB9C7;margin-bottom:10px}
 .bar{height:6px;border-radius:3px;background:rgba(255,255,255,.18);overflow:hidden}
 .bar i{display:block;height:100%;background:var(--hl);border-radius:3px;transition:width .5s ease}
-.nums{display:flex;justify-content:space-between;font-size:13px;margin-top:6px;color:#C9D3DF}
+.nums{display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-top:6px;color:#C9D3DF}
+.nums span{white-space:nowrap}
 .nums b{color:#fff}
 .more-btn{margin-top:10px;background:none;border:0;padding:0;color:#fff;font-weight:600;font-size:14px;text-decoration:underline;text-underline-offset:3px}
 .feednav{display:none}
@@ -192,6 +212,18 @@ h4{font-size:15px;margin:22px 0 10px}
 .like{background:none;border:0;padding:0;font-size:13px;color:var(--muted);display:inline-flex;align-items:center;gap:4px}
 .like[aria-pressed="true"]{color:var(--ink);font-weight:600}
 .like svg{width:16px;height:16px}
+
+/* ---------- full-screen clip player ----------
+   A clip in a box is not a clip, so this covers everything: the same reels as
+   the Watch tab, snapped one per screen, over the whole viewport. */
+.player{position:fixed;inset:0;z-index:36;background:#05080C;display:none}
+.player.on{display:block}
+.player-feed{position:absolute;inset:0;overflow-y:auto;scroll-snap-type:y mandatory;
+  overscroll-behavior:contain;scrollbar-width:none;background:#05080C}
+.player-feed::-webkit-scrollbar{display:none}
+.player-close{position:absolute;z-index:6;top:calc(14px + env(safe-area-inset-top));left:12px;
+  width:40px;height:40px;border:0;border-radius:50%;background:rgba(8,12,18,.55);color:#fff;
+  display:grid;place-items:center;backdrop-filter:blur(10px)}
 
 /* sheets */
 .scrim{position:absolute;inset:0;background:rgba(6,10,16,.55);z-index:20;display:none}
@@ -936,14 +968,14 @@ line.bl-tick{stroke:var(--impact);stroke-width:2.4;stroke-linecap:round}
   .shell{max-width:none;border:0}
 
   /* clip feed: one 9:16 card per screen, rail moved out of the video */
-  #v-watch .reel{--rail:76px;--gutter:240px;--fh:min(100%, 820px, calc((100vw - var(--gutter)) * 16 / 9));
+  #v-watch .reel,.player-feed .reel{--rail:76px;--gutter:240px;--fh:min(100%, 820px, calc((100vw - var(--gutter)) * 16 / 9));
     display:flex;align-items:center;justify-content:center;gap:14px;padding:18px}
-  #v-watch .reel::before{content:"";flex:none;width:var(--rail)}
-  #v-watch .frame{position:relative;inset:auto;height:var(--fh);aspect-ratio:9/16;
+  #v-watch .reel::before,.player-feed .reel::before{content:"";flex:none;width:var(--rail)}
+  #v-watch .frame,.player-feed .frame{position:relative;inset:auto;height:var(--fh);aspect-ratio:9/16;
     border-radius:20px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
-  #v-watch .rail{position:static;height:var(--fh);justify-content:flex-end;padding-bottom:12px;gap:14px}
-  #v-watch .meta{padding:60px 18px 18px}
-  #v-watch .caption{right:24px}
+  #v-watch .rail,.player-feed .rail{position:static;height:var(--fh);justify-content:flex-end;padding-bottom:12px;gap:14px}
+  #v-watch .meta,.player-feed .meta{padding:60px 18px 18px}
+  #v-watch .caption,.player-feed .caption{right:24px}
 
   .sheet{max-width:560px;margin-inline:auto}
 
@@ -977,6 +1009,7 @@ line.bl-tick{stroke:var(--impact);stroke-width:2.4;stroke-linecap:round}
 
   /* clip feed: the sidebar eats width, and the brand now lives there */
   #v-watch .reel{--gutter:530px;padding:24px}
+  .player-feed .reel{--gutter:240px;padding:24px}
   #v-watch .topbar{display:none}
   .feednav{display:flex;flex-direction:column;gap:10px;position:fixed;right:26px;top:50%;transform:translateY(-50%);z-index:4}
   .feednav button{width:44px;height:44px;border:0;border-radius:50%;background:rgba(255,255,255,.14);

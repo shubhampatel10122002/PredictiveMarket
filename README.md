@@ -3,7 +3,8 @@
 A no-build, static web app for discovering and pledging to public-interest legal
 cases, written to show the product running at full scale.
 
-- **Watch**: vertical feed of 60-second case clips, trending cases first
+- **Watch**: vertical feed of every clip on the platform, dealt so two reels
+  from the same case are never adjacent, trending cases first
 - **Cases**: platform totals, a live activity ticker, a "Trending now" rail, search and filters
 - **Case page**: an interactive banner, a rolling comment highlight, why-it-matters
   stats, both headline scores, the discussion, the lock-in and stage runway, the
@@ -95,6 +96,40 @@ Stance tags and ratings are kept in the browser for the demo, because the shippe
 `supabase/schema.sql` has no column for either. Add `stance` to `comments` and a
 `ratings` table before this is real; `addComment()` marks the spot.
 
+## The clip feed
+
+There is one clip feed and it is used twice: as the Watch tab, holding every
+clip on the platform, and as the full-screen player that opens from a case,
+holding that case's clips. Same markup, same activation rules, so a clip
+behaves the same wherever it is met — one per screen, scroll-snapped, and
+only the one on screen is playing.
+
+Watch deals the reels round by round: every case's hero clip first, then every
+case's first clip, and so on, so two reels from the same case are never
+adjacent. Tapping a clip card or a timeline clip opens the player on that clip
+with the rest of the case's clips above and below it, which is the point —
+nothing has to be closed to watch the next one. Escape closes it, arrow keys
+step through it, and on a laptop it is the centred 9:16 column with the action
+rail beside it.
+
+A clip is one of three things and the feed does not care which: a file this
+repo serves, somebody else's player, or no file yet, which plays as the case
+photograph under its beats.
+
+Three things make an embedded player behave like a native clip rather than a
+box dropped into the page:
+
+- **One at a time.** An embed mounts when its reel becomes active and is torn
+  down when it leaves, so a feed of thirty-odd clips never holds thirty
+  iframes. Activation also clears any other live player, because a scroll that
+  outruns the observer must not leave one going off screen.
+- **The swipe stays ours.** The iframe is pointer-transparent. A publisher's
+  controls would swallow a vertical drag, and the drag is how you reach the
+  next clip.
+- **Sound is the viewer's choice, not the clip's.** Clips autoplay muted, as
+  any feed does; the sound button unmutes and that choice carries to the next
+  clip instead of resetting on every swipe.
+
 ## Clips and photographs
 
 Each case has several short vertical clips in `clips[]`, tied to timeline
@@ -150,11 +185,12 @@ narrower and wider, or use the device toolbar, to cross each line.
 | --- | --- |
 | under 700px | Phone. Full-bleed clips, bottom tab bar, pledge opens as a bottom sheet. |
 | 700–1023px | Tablet. Clips become a centred 9:16 card with the action rail beside them; cases in two columns; bottom tab bar stays. |
-| 1024px and up | Laptop. Tab bar becomes a left sidebar, the feed gains up/down arrows (arrow keys work too), the case page splits into story plus a sticky funding panel, and pledging opens as a centred dialog. Three case columns from 1400px. |
+| 1024px and up | Laptop. Tab bar becomes a left sidebar, the feed and the full-screen player gain up/down arrows (arrow keys work too), the case page splits into story plus a sticky funding panel, and pledging opens as a centred dialog. Three case columns from 1400px. |
 
 The clip feed stays vertical at every size — on a laptop it is a centred 9:16
 card, the way TikTok looks in a desktop browser, not a stretched widescreen
-video.
+video. The full-screen player follows the same rule: full-bleed on a phone, a
+centred column on a laptop.
 
 Dark mode follows the operating system setting at every size.
 

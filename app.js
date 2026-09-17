@@ -64,6 +64,8 @@ const icons = {
   back:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
   up:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15l7-7 7 7"/></svg>',
   down:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 9l-7 7-7-7"/></svg>',
+  muted:'<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6.5 9H3v6h3.5L11 19z"/><path d="M16.5 9.5l5 5M21.5 9.5l-5 5"/></svg>',
+  sound:'<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6.5 9H3v6h3.5L11 19z"/><path d="M15 9.5a3.5 3.5 0 0 1 0 5M17.8 7a7 7 0 0 1 0 10"/></svg>',
   lock:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>',
   shield:'<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5.5c0 4.3-2.9 8.1-7 9.5-4.1-1.4-7-5.2-7-9.5V6z"/><path d="M9 12l2 2 4-4"/></svg>',
   flame:'<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M13.5 2c.5 3-1.2 4.4-2.6 5.7C9.2 9.2 7.5 10.7 7.5 14a5.5 5.5 0 0 0 11 0c0-2.4-1-3.7-1.9-4.8-.3 1-.9 1.7-1.7 2 .4-2.6-.6-6.6-1.4-9.2z"/><path d="M9.6 14.6c0-1.3.7-2 1.4-2.7.5 1.6 1.7 1.9 1.7 3.3a1.6 1.6 0 0 1-3.1-.6z" fill="#fff" opacity=".55"/></svg>',
@@ -282,44 +284,6 @@ function refresh(){
   if(current==="mine") renderMine();
 }
 
-/* ============ clip ============
-   Everything drawn on top of a clip lives inside `.frame`: the whole screen
-   on a phone, a centred 9:16 card on a laptop.
-   A clip with no `video` plays as an animated caption card built from its
-   beats. Give it video:"<url>" (and optionally poster:"<url>") and the real
-   file plays in the same frame, with the progress bar and captions following
-   the video's own clock instead of the beat timer. Nothing else changes,
-   which is how the real clips will drop in. */
-function clipHTML(src, inner=""){
-  const beats = src.beats || [];
-  /* A clip can also be somebody else's player. News footage and anything else
-     under licence is not ours to host, and the publisher's embed is the route
-     that is actually allowed: their player, their terms, their count. It gets
-     the frame to itself — no captions, no progress bar, no tap-to-pause —
-     because the controls belong to whoever owns the video. */
-  if(src.embed) return `<div class="frame">
-    <div class="stage embedded" style="--cat:${CATS[src.cat].color}">
-      <iframe class="vid" src="${esc(src.embed)}" title="${esc(src.title || "Case clip")}"
-        loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
-    </div>${inner}</div>`;
-  /* A real file plays as a video. Without one the clip is still built like
-     footage rather than like a caption card: the case photograph sits behind
-     the type on a slow push-in, under grain and a vignette, so the section
-     reads as a clip reel while the real files are being shot. */
-  const media = src.video
-    ? `<video class="vid" src="${esc(src.video)}"${src.poster?` poster="${esc(src.poster)}"`:""} playsinline muted loop preload="metadata"></video>`
-    : src.photo
-      ? `<img class="stage-photo fb" alt="" src="${esc(src.photo)}">`
-      : "";
-  return `<div class="frame">
-    <div class="stage${src.video?"":" lens"}" style="--cat:${CATS[src.cat].color};--kb:${src.kb||0}">${media}<span class="grain"></span></div>
-    <div class="segs">${beats.map(()=>'<div class="seg"><i></i></div>').join("")}</div>
-    ${beats.length && !src.video ?`<div class="caption" aria-live="off"><p class="enter"><span>${esc(beats[0])}</span></p></div>`:""}
-    <button class="tap" aria-label="Pause or play clip"></button>
-    <div class="pause-ico"><div>${icons.play}</div></div>
-    ${inner}</div>`;
-}
 class Clip{
   constructor(root, src){ this.root=root; this.src=src; this.beats=src.beats||[]; this.span=BEAT_MS*Math.max(1,this.beats.length);
     this.t=0; this.beat=-1; this.playing=false; this.userPaused=false; this.last=performance.now();
@@ -377,6 +341,7 @@ const caseClip = c => ({beats:c.beats, video:c.video, embed:c.embed, poster:c.po
 const shortClip = (c, k) => ({...c.clips[k], video:c.clips[k].src, cat:c.cat,
                               photo: c.clips[k].poster || (c.hero && c.hero.src), kb:(k%4)+1});
 
+
 /* ============ badges ============ */
 function trendBadge(c, cls=""){
   if(!c.trending) return "";
@@ -386,59 +351,225 @@ function trendBadge(c, cls=""){
 const vettedBadge = (c, cls="") =>
   `<button class="vetted ${cls}" data-vetted="${c.id}">${icons.shield}Vetted by LaunchJustice</button>`;
 
-/* ============ watch feed ============ */
-const feed = $("#v-watch");
-const feedClips = {};
-let feedOrder = [];
-function renderFeed(){
-  feedOrder = ordered();
-  feed.innerHTML = feedOrder.map(c=>`
-  <article class="reel" data-id="${c.id}" aria-label="${esc(c.head)}">
-    ${clipHTML(caseClip(c), `
-      <div class="topbar"><div class="wordmark">Launch<span>Justice</span></div></div>
+/* ============ clips ============
+   There is one clip feed in this app and it is used twice: as the Watch tab,
+   where it holds every clip on the platform, and as the full-screen player
+   that opens from a case, where it holds that case's clips. Same markup, same
+   activation rules, so a clip behaves the same wherever you meet it: one per
+   screen, scroll-snapped, and only the one you are looking at is playing.
+
+   A clip is one of three things, and the feed does not care which:
+     - a file we host, which plays as <video>
+     - somebody else's video, which mounts their player in the frame
+     - no file yet, which plays as the case photograph under its beats
+
+   Embedded players are mounted when a clip becomes active and torn down when
+   it leaves, so a feed of forty clips never holds forty iframes. They are
+   also pointer-transparent: the publisher's controls would swallow a vertical
+   swipe, so the surface stays ours and the sound button is ours too. */
+
+const YT_ID = url => (String(url).match(/(?:embed|shorts|v)\/([\w-]{6,})/) || [])[1] || "";
+function embedSrc(url, sound){
+  const id = YT_ID(url);
+  const q = `autoplay=1&mute=${sound?0:1}&playsinline=1&rel=0&modestbranding=1&controls=0`
+          + (id ? `&loop=1&playlist=${id}` : "");
+  return url + (url.includes("?") ? "&" : "?") + q;
+}
+
+/* an item is a case plus which of its clips: -1 is the case's own hero clip */
+const clipItem = (c, k) => ({c, k, key:c.id+":"+k, src: k<0 ? caseClip(c) : shortClip(c, k)});
+const caseItems = c => [clipItem(c,-1), ...c.clips.map((_,k)=>clipItem(c,k))];
+/* every clip on the platform, dealt round by round so two reels from the same
+   case are never adjacent: heroes first, then each case's first clip, and so on */
+function allClipItems(){
+  const lists = ordered().map(caseItems), out = [];
+  for(let round = 0, more = true; more; round++){
+    more = false;
+    lists.forEach(l => { if(l[round]){ out.push(l[round]); more = true; } });
+  }
+  return out;
+}
+
+function reelHTML(it, mode){
+  const {c, k, src, key} = it;
+  const embed = !!src.embed, beats = src.beats || [];
+  const clipTitle = k < 0 ? "" : c.clips[k].title;
+  /* we only draw a progress bar and captions over a clip whose clock is ours */
+  const timed = !embed && beats.length;
+  const media = embed
+    ? `<div class="slot" data-embed="${esc(src.embed)}">${src.poster
+        ? `<img class="fb slot-img" alt="" loading="lazy" src="${esc(src.poster)}">` : ""}
+        <span class="slot-play">${icons.play}</span></div>`
+    : src.video
+      ? `<video class="vid" src="${esc(src.video)}" playsinline muted loop preload="none"></video>`
+      : src.photo ? `<img class="stage-photo fb" alt="" loading="lazy" src="${esc(src.photo)}">` : "";
+  return `<article class="reel" data-key="${esc(key)}" data-id="${c.id}"${embed?' data-embed="1"':''}
+      aria-label="${esc(clipTitle || c.head)}">
+    <div class="frame">
+      <div class="stage${embed?" embedded":(src.video?"":" lens")}"
+           style="--cat:${CATS[c.cat].color};--kb:${src.kb||0}">${media}<span class="grain"></span></div>
+      ${timed?`<div class="segs">${beats.map(()=>'<div class="seg"><i></i></div>').join("")}</div>`:""}
+      ${timed && !src.video?`<div class="caption" aria-live="off"><p class="enter"><span>${esc(beats[0])}</span></p></div>`:""}
+      ${embed?"":`<button class="tap" aria-label="Pause or play clip"></button>
+      <div class="pause-ico"><div>${icons.play}</div></div>`}
+      ${embed?`<button class="sound" data-sound aria-pressed="false">${icons.muted}<span>Sound</span></button>`:""}
+      ${mode==="watch"?`<div class="topbar"><div class="wordmark">Launch<span>Justice</span></div></div>`:""}
       <div class="meta" style="--cat:${CATS[c.cat].color}">
         ${trendBadge(c,"on-dark")}
         <div class="org"><span class="dot"></span>${esc(c.ngo)}</div>
         <h2>${esc(c.head)}</h2>
-        <div class="vs">${esc(c.caseName)}</div>
+        <div class="vs">${clipTitle
+          ? `<span class="vs-clip">${icons.playSm}<span>${esc(clipTitle)}${src.credit?` <i>via ${esc(src.credit)}</i>`:""}</span></span>`
+          : esc(c.caseName)}</div>
         <div class="meta-row">${scoreTiny(c)}
           <div class="meta-fund">
             <div class="bar"><i data-pct="${c.id}"></i></div>
             <div class="nums"><span><b data-raised-s="${c.id}"></b> of ${usdShort(c.goal)}</span><span data-backers="${c.id}"></span></div>
           </div></div>
         <button class="more-btn" data-act="details">See the full case</button>
-      </div>`)}
+      </div>
+    </div>
     <div class="rail">
       <button data-act="pledge"><span class="ic pledge">${icons.pledge}</span>Pledge</button>
       <button data-act="discuss"><span class="ic">${icons.chat}</span><span data-ccount="${c.id}">0</span></button>
       <button data-act="details"><span class="ic">${icons.info}</span>Details</button>
       <button data-act="share"><span class="ic">${icons.share}</span>Share</button>
     </div>
-  </article>`).join("") + `
-  <div class="feednav">
-    <button data-step="-1" aria-label="Previous case">${icons.up}</button>
-    <button data-step="1" aria-label="Next case">${icons.down}</button>
-  </div>`;
-  feed.querySelectorAll(".reel").forEach(el=>{
-    const c = byId[el.dataset.id]; const clip = new Clip(el, caseClip(c)); feedClips[c.id]=clip; clips.add(clip);
-    el.querySelectorAll("[data-act]").forEach(b=>b.addEventListener("click",()=>{
-      const a=b.dataset.act;
-      if(a==="pledge") openPledge(c.id);
-      if(a==="discuss") openCase(c.id, "s-talk");
-      if(a==="details") openCase(c.id);
-      if(a==="share") shareCase(c);
-    }));
-  });
-  feed.querySelectorAll("[data-step]").forEach(b=>b.addEventListener("click",()=>stepFeed(+b.dataset.step)));
-  const io = new IntersectionObserver(es=>es.forEach(e=>{
-    const clip=feedClips[e.target.dataset.id];
-    if(e.isIntersecting && e.intersectionRatio>.6 && current==="watch" && !sheetOpen) { activeFeed=e.target.dataset.id; clip.play(); } else clip.pause();
-  }),{root:feed, threshold:[0,.6,1]});
-  feed.querySelectorAll(".reel").forEach(el=>io.observe(el));
+  </article>`;
 }
-function stepFeed(dir){ feed.scrollBy({top: dir*feed.clientHeight, behavior:"smooth"}); }
-let activeFeed = CASES[0].id;
-function feedPlay(on){ Object.entries(feedClips).forEach(([id,cl])=> (on && id===activeFeed) ? cl.play() : cl.pause()); }
+
+class ClipFeed{
+  constructor(root, items, mode){
+    this.root = root; this.items = items; this.mode = mode;
+    this.byKey = Object.fromEntries(items.map(it=>[it.key, it]));
+    this.timers = new Map();      /* key -> Clip, for the ones we clock ourselves */
+    this.active = null; this.wanted = false; this.sound = false;
+    root.innerHTML = items.map(it=>reelHTML(it, mode)).join("")
+      + (mode==="watch" ? `<div class="feednav">
+          <button data-step="-1" aria-label="Previous clip">${icons.up}</button>
+          <button data-step="1" aria-label="Next clip">${icons.down}</button></div>` : "");
+
+    root.querySelectorAll(".reel").forEach(el=>{
+      const it = this.byKey[el.dataset.key], c = it.c;
+      if(!el.dataset.embed){
+        const clip = new Clip(el, it.src);
+        this.timers.set(el.dataset.key, clip); clips.add(clip);
+      }
+      el.querySelectorAll("[data-act]").forEach(b=>b.addEventListener("click",()=>{
+        const a = b.dataset.act;
+        if(a==="pledge"){ if(mode==="player") closePlayer(); openPledge(c.id); }
+        if(a==="discuss"){ if(mode==="player") closePlayer(); openCase(c.id, "s-talk"); }
+        if(a==="details"){ if(mode==="player") closePlayer(); openCase(c.id); }
+        if(a==="share") shareCase(c);
+      }));
+      const snd = el.querySelector("[data-sound]");
+      if(snd) snd.addEventListener("click",()=>this.setSound(!this.sound));
+    });
+    root.querySelectorAll("[data-step]").forEach(b=>b.addEventListener("click",()=>this.step(+b.dataset.step)));
+
+    this.io = new IntersectionObserver(es=>es.forEach(e=>{
+      if(e.isIntersecting && e.intersectionRatio > .6) this.setActive(e.target);
+      else if(e.target !== this.active) this.leave(e.target);
+    }), {root, threshold:[0,.4,.6,1]});
+    root.querySelectorAll(".reel").forEach(el=>this.io.observe(el));
+  }
+  setActive(el){
+    if(this.active === el){ if(this.wanted) this.enter(el); return; }
+    if(this.active) this.leave(this.active);
+    this.active = el;
+    if(this.wanted) this.enter(el);
+  }
+  setSound(on){
+    this.sound = on;
+    this.root.querySelectorAll("[data-sound]").forEach(b=>{
+      b.setAttribute("aria-pressed", String(on));
+      b.querySelector("span").textContent = on ? "Sound on" : "Sound";
+    });
+    if(this.active && this.active.dataset.embed){ this.leave(this.active); this.enter(this.active); }
+  }
+  enter(el){
+    if(!el || el !== this.active || !this.wanted) return;
+    /* whatever else happened, exactly one embedded player is ever alive: a
+       scroll that outruns the observer must not leave one playing behind it */
+    this.root.querySelectorAll(".slot iframe").forEach(f=>{ if(!el.contains(f)) f.remove(); });
+    if(el.dataset.embed){
+      const slot = el.querySelector(".slot");
+      if(slot && !slot.querySelector("iframe")){
+        const f = document.createElement("iframe");
+        f.className = "vid";
+        f.title = el.getAttribute("aria-label") || "Case clip";
+        f.allow = "accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture";
+        f.setAttribute("referrerpolicy","strict-origin-when-cross-origin");
+        f.setAttribute("allowfullscreen","");
+        f.src = embedSrc(slot.dataset.embed, this.sound);
+        slot.appendChild(f);
+      }
+      return;
+    }
+    const clip = this.timers.get(el.dataset.key); if(clip) clip.play();
+  }
+  leave(el){
+    if(!el) return;
+    if(el.dataset.embed){ const f = el.querySelector(".slot iframe"); if(f) f.remove(); return; }
+    const clip = this.timers.get(el.dataset.key); if(clip) clip.pause();
+  }
+  play(){ this.wanted = true;
+    if(!this.active) this.active = this.root.querySelector(".reel");
+    this.enter(this.active); }
+  pause(){ this.wanted = false; this.leave(this.active); }
+  /* one clip per screen, so a step is always one viewport */
+  step(dir){ this.root.scrollBy({top: dir*this.root.clientHeight, behavior: REDUCED?"auto":"smooth"}); }
+  jumpTo(key){
+    const el = this.root.querySelector(`.reel[data-key="${key.replace(/"/g,'')}"]`);
+    if(!el) return;
+    this.root.scrollTop = el.offsetTop;
+    this.root.querySelectorAll(".reel").forEach(r=>{ if(r !== el) this.leave(r); });
+    this.active = el;
+  }
+  destroy(){
+    this.io.disconnect();
+    this.root.querySelectorAll(".reel").forEach(el=>this.leave(el));
+    this.timers.forEach(c=>clips.delete(c));
+    this.timers.clear(); this.active = null; this.wanted = false;
+  }
+}
+
+/* ============ watch feed ============ */
+let watchFeed = null;
+function renderFeed(){
+  if(watchFeed) watchFeed.destroy();
+  watchFeed = new ClipFeed($("#v-watch"), allClipItems(), "watch");
+}
+function feedPlay(on){ if(watchFeed){ on ? watchFeed.play() : watchFeed.pause(); } }
+function stepFeed(dir){ if(watchFeed) watchFeed.step(dir); }
+
+/* ============ full-screen player ============
+   Opened from a case: its own clip first if that is what was tapped, then the
+   rest of them, scrolled the same way as the Watch tab. Covers the screen,
+   because a clip in a box is not a clip. */
+let player = null;
+function openPlayer(c, k){
+  if(player) player.destroy();
+  if(sheetOpen) closeSheet();
+  feedPlay(false);
+  const shell = $("#player");
+  shell.classList.add("on");
+  player = new ClipFeed($("#playerFeed"), caseItems(c), "player");
+  player.jumpTo(c.id+":"+(k===undefined?-1:k));
+  player.play();
+  refresh();
+  const close = $("#playerClose");
+  close.onclick = closePlayer;
+  close.focus();
+}
+function closePlayer(){
+  if(player){ player.destroy(); player = null; }
+  $("#player").classList.remove("on");
+  $("#playerFeed").innerHTML = "";
+  if(current === "watch" && !sheetOpen) feedPlay(true);
+}
+const playerOpen = () => !!player;
+
 async function shareCase(c){
   const text = `${c.head} — back this case on LaunchJustice`;
   try{ await navigator.clipboard.writeText(text); toast("Case copied to share"); }
@@ -805,7 +936,7 @@ function openCase(id, jumpTo){
   v.querySelectorAll("[data-score]").forEach(b=>b.addEventListener("click",()=>openScore(c.id, b.dataset.score)));
   v.querySelectorAll("[data-vetted]").forEach(b=>b.addEventListener("click",()=>openVetting(c)));
   v.querySelectorAll("[data-clip]").forEach(b=>b.addEventListener("click",()=>
-    b.dataset.clip==="hero" ? openClipViewer(c, -1) : openClipViewer(c, +b.dataset.clip)));
+    b.dataset.clip==="hero" ? openPlayer(c, -1) : openPlayer(c, +b.dataset.clip)));
   v.querySelectorAll("[data-jump]").forEach(b=>b.addEventListener("click",()=>jump(b.dataset.jump)));
   const rate = v.querySelector("#rateBtn"); rate && rate.addEventListener("click",()=>openRate(c.id));
 
@@ -1063,7 +1194,7 @@ function renderComments(el, id){
 }
 
 /* ============ sheets ============ */
-const sheet=$("#sheet"), scrim=$("#scrim"); let sheetOpen=false, lastFocus=null, sheetClip=null;
+const sheet=$("#sheet"), scrim=$("#scrim"); let sheetOpen=false, lastFocus=null;
 function openSheet(html, cls=""){
   lastFocus=document.activeElement; sheet.className="sheet "+cls;
   sheet.innerHTML='<div class="grip"></div>'+html;
@@ -1072,12 +1203,16 @@ function openSheet(html, cls=""){
 }
 function closeSheet(){
   sheet.classList.remove("on"); scrim.classList.remove("on"); sheetOpen=false;
-  if(sheetClip){ clips.delete(sheetClip); sheetClip=null; }
   if(current==="watch") feedPlay(true);
   lastFocus && lastFocus.focus && lastFocus.focus();
 }
 scrim.addEventListener("click",closeSheet);
 document.addEventListener("keydown",e=>{
+  if(e.key==="Escape" && playerOpen()){ closePlayer(); return; }
+  if(playerOpen()){
+    if(e.key==="ArrowDown" || e.key==="ArrowUp"){ e.preventDefault(); player.step(e.key==="ArrowDown"?1:-1); }
+    return;
+  }
   if(e.key==="Escape" && sheetOpen){ closeSheet(); return; }
   if(sheetOpen || current!=="watch") return;
   const tag = (e.target.tagName||"").toLowerCase();
@@ -1096,26 +1231,6 @@ function openNameThen(cb){
     ${sb?`<p class="hint">Or <button class="link" data-auth="in">sign in</button> instead.</p>`:""}
     <div class="err" id="nmErr"></div><button class="btn primary" id="nmGo" style="margin-top:8px">Continue</button>`);
   $("#nmGo").onclick=()=>{ const n=$("#nm").value.trim(); if(!n){ $("#nmErr").textContent="Enter a name to continue."; return; } rememberName(n); closeSheet(); cb(); };
-}
-
-/* the clip viewer: the same player as the feed, in a 9:16 window */
-function openClipViewer(c, k){
-  const src = k<0 ? caseClip(c) : shortClip(c, k);
-  const title = k<0 ? "The case in 60 seconds" : c.clips[k].title;
-  const milestone = k<0 ? "" : (c.timeline[c.clips[k].milestone]||[])[0] || "";
-  const tie = src.embed && src.beats && src.beats.length ? src.beats[0] : "";
-  openSheet(`<div class="cv">
-    <div class="cv-head"><b>${esc(title)}</b>${milestone?`<small>${esc(milestone)}</small>`:""}</div>
-    <div class="cv-frame reel">${clipHTML(src)}</div>
-    ${tie?`<p class="cv-tie">${esc(tie)}${src.credit?`<span>via ${esc(src.credit)}</span>`:""}</p>`:""}
-    <div class="cv-foot">
-      <button class="btn ghost sm" id="cvPledge">Pledge</button>
-      <div class="cv-strip">${c.clips.map((cl,i)=>`<button class="${i===k?"on":""}" data-cv="${i}" aria-label="${esc(cl.title)}"></button>`).join("")}</div>
-    </div></div>`, "wide");
-  const frame = sheet.querySelector(".cv-frame");
-  sheetClip = new Clip(frame, src); clips.add(sheetClip); sheetClip.play();
-  sheet.querySelectorAll("[data-cv]").forEach(b=>b.addEventListener("click",()=>openClipViewer(c, +b.dataset.cv)));
-  $("#cvPledge").addEventListener("click",()=>{ closeSheet(); openPledge(c.id); });
 }
 
 /* what the vetted badge opens */
