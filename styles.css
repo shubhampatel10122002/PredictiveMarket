@@ -200,6 +200,10 @@ h4{font-size:15px;margin:22px 0 10px}
 .sheet{pointer-events:none;position:absolute;left:0;right:0;bottom:0;max-height:88%;overflow-y:auto;background:var(--surface);color:var(--ink);border-radius:22px 22px 0 0;padding:10px 18px 24px;z-index:21;transform:translateY(105%);visibility:hidden;transition:transform .28s cubic-bezier(.2,.8,.2,1), visibility 0s linear .28s}
 .sheet.on{transform:none;pointer-events:auto;visibility:visible;transition:transform .28s cubic-bezier(.2,.8,.2,1), visibility 0s}
 .grip{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 12px}
+/* a sheet that is a step inside a flow, rather than a destination */
+.sheet-back{display:inline-flex;align-items:center;gap:4px;margin:0 0 12px;padding:6px 12px 6px 8px;
+  border:0;border-radius:99px;background:var(--chip);color:var(--ink);font-size:13px;font-weight:600}
+.sheet-back svg{width:15px;height:15px}
 .sheet h2{margin:0 0 2px;font-size:22px;letter-spacing:-.015em}
 .sheet .sub{color:var(--muted);font-size:14px;margin:0 0 16px}
 label.f{display:block;font-size:14px;font-weight:600;margin:14px 0 6px}
@@ -696,8 +700,9 @@ label.f{display:block;font-size:14px;font-weight:600;margin:14px 0 6px}
 .cc-play{position:absolute;inset:0;margin:auto;width:38px;height:38px;border-radius:50%;
   background:rgba(255,255,255,.9);color:#16202C;display:grid;place-items:center;
   box-shadow:0 4px 14px rgba(0,0,0,.3)}
-.cc-time{position:absolute;right:7px;bottom:7px;font-size:10.5px;font-weight:700;color:#fff;
+.cc-time,.cc-src{position:absolute;right:7px;bottom:7px;font-size:10.5px;font-weight:700;color:#fff;
   background:rgba(8,12,18,.55);border-radius:5px;padding:1px 5px}
+.cc-src{left:7px;right:auto;font-weight:600;color:#DDE5EF}
 .cc-t{font-size:13.5px;font-weight:700;line-height:1.25}
 .cc-m{font-size:11.5px;color:var(--muted);line-height:1.25}
 
@@ -850,6 +855,8 @@ line.bl-tick{stroke:var(--impact);stroke-width:2.4;stroke-linecap:round}
 .cv-frame .frame{position:absolute;inset:0}
 .cv-frame .caption{top:auto;bottom:22%;left:18px;right:18px}
 .cv-frame .caption p{font-size:24px}
+.cv-tie{display:flex;align-items:baseline;gap:8px;margin:10px 0 0;font-size:13.5px;color:var(--muted);line-height:1.4}
+.cv-tie span{flex:none;font-size:11px;color:var(--ink-soft)}
 .cv-foot{display:flex;align-items:center;gap:12px;margin-top:12px}
 .cv-strip{display:flex;gap:5px;flex:1;justify-content:flex-end;flex-wrap:wrap}
 .cv-strip button{width:22px;height:5px;border-radius:3px;border:0;background:var(--track);padding:0}

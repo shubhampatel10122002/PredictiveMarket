@@ -116,17 +116,17 @@ milestones, plus the 60-second hero clip.
   on a case are each framed differently so the rail does not look like one
   still repeated.
 
-**maple-evictions ships with real video** — six MP4s in `clips/`, rendered
-from the case's own beats by `tools/render-clips.js`, playing through the real
-`<video>` path. They are placeholders for filmed footage, not a substitute for
-it, and they are there so the clip section is a working part of the product
-rather than a promise. `clips/README.md` covers encoding, how to frame footage
-so the app's furniture does not sit on it, and the one-line change per clip.
+**maple-evictions plays real video in every slot.** Its hero clip is a
+rendered MP4 in `clips/`, made from the case's own beats by
+`tools/render-clips.js`; its five short clips are embedded YouTube explainers
+on tenant rights, good-cause eviction and what happens at a hearing, credited
+on the card and tied back to the case in the viewer.
 
-A clip can also carry an `embed` instead of a `src`, which renders the
-publisher's own player in the frame. That is the route for news footage and
-anything else under licence, which is not ours to host whatever the demo is
-for. `clips/README.md` has the details.
+That split is the point. A clip carries either a `src`, which is a file this
+repo serves, or an `embed`, which is the publisher's own player. Footage under
+licence is not ours to host whatever a demo is for, so it is embedded; our own
+clips are hosted. `clips/README.md` covers both, plus encoding and how to frame
+footage so the app's furniture does not sit on it.
 
 Two things to know when testing video locally: Playwright's bundled Chromium
 has no H.264 decoder, so an MP4 silently fails there and the clip falls back

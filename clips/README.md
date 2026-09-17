@@ -5,15 +5,25 @@ Short vertical video for the case pages. Everything here is 9:16 — the frame i
 
 ## What is in here now
 
-Six files for **maple-evictions**: the hero clip and its five short ones,
-rendered from the case's own beats by `tools/render-clips.js`. They are real
-MP4s played through the real `<video>` path, and they are placeholders for
-filmed footage rather than a substitute for it. Replace them as clips are shot.
+One file: `maple-evictions-hero.mp4`, the housing case's 60-second clip,
+rendered from its own beats by `tools/render-clips.js`. It is a placeholder for
+a filmed hero clip rather than a substitute for one.
+
+That case's five short clips are **embeds** — real tenant-rights and eviction
+explainers on YouTube, credited on the card and tied back to the case in the
+viewer. They are somebody else's videos, which is why they are embedded rather
+than sitting in this folder. See *Footage you do not own* below.
 
 Every other case plays its clip card instead: the case photograph on a slow
-push-in, under grain and a vignette, with the beats set over it. Clips with a
-file and clips without sit in the same rail, which is what the product looks
-like while content is being made.
+push-in, under grain and a vignette, with the beats set over it. Hosted files,
+embeds and clip cards all sit in the same rail, which is what the product
+looks like while content is being made.
+
+An embed needs the network and needs the publisher to allow embedding. If you
+want a version of this case that plays with no connection at all — a room with
+bad wifi, say — `node tools/render-clips.js maple-evictions` puts rendered MP4s
+back in this folder, and swapping `embed` for `src` on each clip is a one-line
+change per clip.
 
 A rendered clip carries no wordmark, no progress bar and no credit, because
 the app draws all three over whatever it plays. Frame real footage the same
