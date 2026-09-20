@@ -10,9 +10,9 @@ cases, written to show the product running at full scale.
   stats, both headline scores, the discussion, the lock-in and stage runway, the
   outcome fan, the clip rail, the people, and the filings underneath
 - **Score breakdown**: a waterfall for chance-to-win and a bloom for social impact
-- **Pledge**: lock-in and the three outcomes shown in the flow, no payment taken
+- **Invest**: lock-in and the three outcomes shown in the flow, no payment taken
 - **Accounts**: email sign-up or Continue with Google, entirely optional
-- **My pledges**: a small portfolio with what it returns if every case wins, settles or loses
+- **My investments**: a small portfolio with what it returns if every case wins, settles or loses
 
 Everything in `data.js` is fictional: the cases, the people, the discussion, the
 scores and the numbers. It is written the way a platform with a couple of million
@@ -63,7 +63,10 @@ the scoring model in the business plan, not predictions.
 ## Returns and the lock-in
 
 Returns are a separate component from the scores, and they never claim a number
-is guaranteed.
+is guaranteed. The interface says **invest**, which is the word the product
+uses; the honest notices stay — no money moves today, and nothing is
+collected until investing opens. Table names, function names and element ids
+still say `pledge`, because the Supabase schema does.
 
 - The **runway** is one rail that answers two questions at once: each of the six
   stages (Pre-filing, Pleadings, Discovery, Trial, Decision, Appeal) is drawn as
@@ -104,9 +107,10 @@ holding that case's clips. Same markup, same activation rules, so a clip
 behaves the same wherever it is met — one per screen, scroll-snapped, and
 only the one on screen is playing.
 
-Watch deals the reels round by round: every case's hero clip first, then every
-case's first clip, and so on, so two reels from the same case are never
-adjacent. Tapping a clip card or a timeline clip opens the player on that clip
+Watch opens on the filmed clips, in order, because people speaking is what
+someone arriving should meet first. Behind them the rest is dealt round by
+round — every case's hero clip, then every case's first clip, and so on — so
+two reels from the same case are never adjacent. Tapping a clip card or a timeline clip opens the player on that clip
 with the rest of the case's clips above and below it, which is the point —
 nothing has to be closed to watch the next one. Escape closes it, arrow keys
 step through it, and on a laptop it is the centred 9:16 column with the action
@@ -126,9 +130,18 @@ box dropped into the page:
 - **The swipe stays ours.** The iframe is pointer-transparent. A publisher's
   controls would swallow a vertical drag, and the drag is how you reach the
   next clip.
-- **Sound is the viewer's choice, not the clip's.** Clips autoplay muted, as
-  any feed does; the sound button unmutes and that choice carries to the next
-  clip instead of resetting on every swipe.
+- **Sound is on, and turning it on never stops the video.** A clip is only
+  ever *mounted* muted: asking a browser to autoplay with sound is asking to
+  be refused, and the player comes back paused behind an iframe we
+  deliberately made pointer-transparent, which is to say dead. Sound is turned
+  on afterwards, on a player that is already running, through YouTube's
+  IFrame API — no reload. Audio needs a gesture before any browser lets it
+  through, so "on by default" means on from the first time the person touches
+  the page, and on for every clip after that. Tapping a clip pauses and
+  resumes it, so there is always a way back to playing.
+
+  If the IFrame API never loads, the clips still play, muted, and the sound
+  button says so rather than killing the video to prove a point.
 
 ## Clips and photographs
 

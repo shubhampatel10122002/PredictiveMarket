@@ -369,23 +369,70 @@ const vettedBadge = (c, cls="") =>
    swipe, so the surface stays ours and the sound button is ours too. */
 
 const YT_ID = url => (String(url).match(/(?:embed|shorts|v)\/([\w-]{6,})/) || [])[1] || "";
-function embedSrc(url, sound){
+/* A clip is only ever mounted MUTED. Asking a browser to autoplay with sound
+   is asking to be refused: the player comes back paused, showing its own
+   branding, behind an iframe we deliberately made pointer-transparent, which
+   is to say dead. Sound is turned on afterwards, on a player that is already
+   running, through the IFrame API. */
+const embedSrc = url => {
   const id = YT_ID(url);
-  const q = `autoplay=1&mute=${sound?0:1}&playsinline=1&rel=0&modestbranding=1&controls=0`
+  const q = `autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1&controls=0`
           + (id ? `&loop=1&playlist=${id}` : "");
   return url + (url.includes("?") ? "&" : "?") + q;
+};
+
+/* The IFrame API, fetched once. It is the only way to unmute a player without
+   reloading it, and reloading it is what broke playback. If it never arrives
+   the clips still play, muted, and the sound button says so rather than
+   killing the video to prove a point. */
+let ytApi = null;
+function loadYT(){
+  if(ytApi) return ytApi;
+  ytApi = new Promise(resolve=>{
+    if(window.YT && window.YT.Player) return resolve(window.YT);
+    const before = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = ()=>{ if(before) try{ before(); }catch(e){} resolve(window.YT); };
+    const s = document.createElement("script");
+    s.src = "https://www.youtube.com/iframe_api"; s.async = true;
+    s.onerror = ()=>resolve(null);
+    document.head.appendChild(s);
+    setTimeout(()=>resolve(window.YT && window.YT.Player ? window.YT : null), 8000);
+  });
+  return ytApi;
 }
+
+/* Audio needs a gesture before a browser will let any of it through, so
+   "sound on by default" means: on from the first time the person touches the
+   page, and on for every clip after that. */
+let gestured = false;
+function firstGesture(){
+  if(gestured) return;
+  gestured = true;
+  [watchFeed, player].forEach(f=>{ if(f){ f.applySound(); f.syncSoundLabels(); } });
+}
+["pointerdown","touchend","keydown"].forEach(t=>
+  document.addEventListener(t, firstGesture, {passive:true}));
 
 /* an item is a case plus which of its clips: -1 is the case's own hero clip */
 const clipItem = (c, k) => ({c, k, key:c.id+":"+k, src: k<0 ? caseClip(c) : shortClip(c, k)});
 const caseItems = c => [clipItem(c,-1), ...c.clips.map((_,k)=>clipItem(c,k))];
-/* every clip on the platform, dealt round by round so two reels from the same
-   case are never adjacent: heroes first, then each case's first clip, and so on */
+/* Every clip on the platform. Filmed footage opens the feed, in order, because
+   people speaking is what someone arriving should meet first; the story-style
+   clips follow. Behind the footage the rest is dealt round by round, so two
+   reels from the same case are never adjacent: heroes first, then each case's
+   first clip, and so on. */
 function allClipItems(){
-  const lists = ordered().map(caseItems), out = [];
+  const lists = ordered().map(caseItems);
+  const filmed = [], pending = [];
+  lists.forEach(l=>{
+    const rest = [];
+    l.forEach(it => it.src.embed ? filmed.push(it) : rest.push(it));
+    pending.push(rest);
+  });
+  const out = [...filmed];
   for(let round = 0, more = true; more; round++){
     more = false;
-    lists.forEach(l => { if(l[round]){ out.push(l[round]); more = true; } });
+    pending.forEach(l => { if(l[round]){ out.push(l[round]); more = true; } });
   }
   return out;
 }
@@ -412,7 +459,8 @@ function reelHTML(it, mode){
       ${timed && !src.video?`<div class="caption" aria-live="off"><p class="enter"><span>${esc(beats[0])}</span></p></div>`:""}
       ${embed?"":`<button class="tap" aria-label="Pause or play clip"></button>
       <div class="pause-ico"><div>${icons.play}</div></div>`}
-      ${embed?`<button class="sound" data-sound aria-pressed="false">${icons.muted}<span>Sound</span></button>`:""}
+      ${embed?`<button class="tap" data-etap aria-label="Pause or play clip"></button>
+      <button class="sound" data-sound aria-pressed="false">${icons.muted}<span>Sound</span></button>`:""}
       ${mode==="watch"?`<div class="topbar"><div class="wordmark">Launch<span>Justice</span></div></div>`:""}
       <div class="meta" style="--cat:${CATS[c.cat].color}">
         ${trendBadge(c,"on-dark")}
@@ -430,7 +478,7 @@ function reelHTML(it, mode){
       </div>
     </div>
     <div class="rail">
-      <button data-act="pledge"><span class="ic pledge">${icons.pledge}</span>Pledge</button>
+      <button data-act="pledge"><span class="ic pledge">${icons.pledge}</span>Invest</button>
       <button data-act="discuss"><span class="ic">${icons.chat}</span><span data-ccount="${c.id}">0</span></button>
       <button data-act="details"><span class="ic">${icons.info}</span>Details</button>
       <button data-act="share"><span class="ic">${icons.share}</span>Share</button>
@@ -443,7 +491,9 @@ class ClipFeed{
     this.root = root; this.items = items; this.mode = mode;
     this.byKey = Object.fromEntries(items.map(it=>[it.key, it]));
     this.timers = new Map();      /* key -> Clip, for the ones we clock ourselves */
-    this.active = null; this.wanted = false; this.sound = false;
+    this.active = null; this.wanted = false;
+    this.sound = true;      /* on by default; the browser needs a gesture first */
+    this.yt = null; this.ytEl = null;
     root.innerHTML = items.map(it=>reelHTML(it, mode)).join("")
       + (mode==="watch" ? `<div class="feednav">
           <button data-step="-1" aria-label="Previous clip">${icons.up}</button>
@@ -463,9 +513,12 @@ class ClipFeed{
         if(a==="share") shareCase(c);
       }));
       const snd = el.querySelector("[data-sound]");
-      if(snd) snd.addEventListener("click",()=>this.setSound(!this.sound));
+      if(snd) snd.addEventListener("click",e=>{ e.stopPropagation(); this.setSound(!this.sound); });
+      const etap = el.querySelector("[data-etap]");
+      if(etap) etap.addEventListener("click",()=>this.togglePlay(el));
     });
     root.querySelectorAll("[data-step]").forEach(b=>b.addEventListener("click",()=>this.step(+b.dataset.step)));
+    this.syncSoundLabels();
 
     this.io = new IntersectionObserver(es=>es.forEach(e=>{
       if(e.isIntersecting && e.intersectionRatio > .6) this.setActive(e.target);
@@ -479,38 +532,88 @@ class ClipFeed{
     this.active = el;
     if(this.wanted) this.enter(el);
   }
+  /* the sound the person will actually hear: what they asked for, once the
+     browser has had the gesture it insists on */
+  live(){ return this.sound && gestured; }
+  syncSoundLabels(){
+    const label = !this.sound ? "Sound off" : gestured ? "Sound on" : "Tap for sound";
+    this.root.querySelectorAll("[data-sound]").forEach(b=>{
+      b.setAttribute("aria-pressed", String(this.live()));
+      b.querySelector("span").textContent = label;
+    });
+  }
+  applySound(){
+    const yt = this.yt;
+    if(!yt || !yt.unMute) return;
+    try{ this.live() ? yt.unMute() : yt.mute(); }catch(e){}
+  }
   setSound(on){
     this.sound = on;
-    this.root.querySelectorAll("[data-sound]").forEach(b=>{
-      b.setAttribute("aria-pressed", String(on));
-      b.querySelector("span").textContent = on ? "Sound on" : "Sound";
-    });
-    if(this.active && this.active.dataset.embed){ this.leave(this.active); this.enter(this.active); }
+    this.syncSoundLabels();
+    /* no remount: the running player is simply told to unmute */
+    this.applySound();
+  }
+  togglePlay(el){
+    const yt = this.yt;
+    if(!yt || this.ytEl !== el || !yt.getPlayerState) return;
+    try{ yt.getPlayerState() === 1 ? yt.pauseVideo() : yt.playVideo(); }catch(e){}
   }
   enter(el){
     if(!el || el !== this.active || !this.wanted) return;
     /* whatever else happened, exactly one embedded player is ever alive: a
        scroll that outruns the observer must not leave one playing behind it */
-    this.root.querySelectorAll(".slot iframe").forEach(f=>{ if(!el.contains(f)) f.remove(); });
+    this.root.querySelectorAll(".reel").forEach(r=>{ if(r !== el && r.dataset.embed) this.dropEmbed(r); });
     if(el.dataset.embed){
       const slot = el.querySelector(".slot");
-      if(slot && !slot.querySelector("iframe")){
-        const f = document.createElement("iframe");
-        f.className = "vid";
-        f.title = el.getAttribute("aria-label") || "Case clip";
-        f.allow = "accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture";
-        f.setAttribute("referrerpolicy","strict-origin-when-cross-origin");
-        f.setAttribute("allowfullscreen","");
-        f.src = embedSrc(slot.dataset.embed, this.sound);
-        slot.appendChild(f);
-      }
+      if(!slot || slot.firstElementChild && slot.querySelector(".yt-host, iframe")) return;
+      const id = YT_ID(slot.dataset.embed);
+      const host = document.createElement("div");
+      host.className = "yt-host";
+      host.id = "yt" + Math.random().toString(36).slice(2, 9);
+      slot.appendChild(host);
+      this.ytEl = el;
+      loadYT().then(YT=>{
+        if(this.ytEl !== el || !host.isConnected) return;
+        if(YT && YT.Player && id){
+          this.yt = new YT.Player(host.id, {
+            videoId: id,
+            playerVars:{autoplay:1, mute:1, playsinline:1, controls:0, rel:0,
+                        modestbranding:1, fs:0, loop:1, playlist:id},
+            events:{ onReady: e=>{
+              if(this.ytEl !== el){ try{ e.target.destroy(); }catch(_){} return; }
+              const f = e.target.getIframe && e.target.getIframe();
+              if(f) f.classList.add("vid");
+              try{ e.target.playVideo(); }catch(_){}
+              this.applySound();
+            }}
+          });
+        } else {
+          /* no API: a muted iframe still plays, which is the thing that matters */
+          const f = document.createElement("iframe");
+          f.className = "vid";
+          f.title = el.getAttribute("aria-label") || "Case clip";
+          f.allow = "accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture";
+          f.setAttribute("referrerpolicy","strict-origin-when-cross-origin");
+          f.setAttribute("allowfullscreen","");
+          f.src = embedSrc(slot.dataset.embed);
+          host.replaceWith(f);
+        }
+      });
       return;
     }
     const clip = this.timers.get(el.dataset.key); if(clip) clip.play();
   }
+  dropEmbed(el){
+    if(this.ytEl === el){
+      if(this.yt){ try{ this.yt.destroy(); }catch(e){} this.yt = null; }
+      this.ytEl = null;
+    }
+    const slot = el.querySelector(".slot");
+    if(slot) slot.querySelectorAll("iframe, .yt-host").forEach(n=>n.remove());
+  }
   leave(el){
     if(!el) return;
-    if(el.dataset.embed){ const f = el.querySelector(".slot iframe"); if(f) f.remove(); return; }
+    if(el.dataset.embed){ this.dropEmbed(el); return; }
     const clip = this.timers.get(el.dataset.key); if(clip) clip.pause();
   }
   play(){ this.wanted = true;
@@ -531,6 +634,7 @@ class ClipFeed{
     this.root.querySelectorAll(".reel").forEach(el=>this.leave(el));
     this.timers.forEach(c=>clips.delete(c));
     this.timers.clear(); this.active = null; this.wanted = false;
+    this.yt = null; this.ytEl = null;
   }
 }
 
@@ -802,7 +906,7 @@ function timeHTML(c){
     <h2 class="sec-h">Where the case is, and how long it runs</h2>
     <div class="lockline reveal">${icons.lock}
       <div><span><b>Locked about ${lockYears(c)} years</b>, expected to end ${endYear(c)}</span>
-      <small>No early withdrawals. A pledge stays in until the case resolves or is dropped.</small></div></div>
+      <small>No early withdrawals. An investment stays in until the case resolves or is dropped.</small></div></div>
     <div class="rwbox reveal">${runway(c)}
       <p class="rw-cap" id="rwCap"><b>${esc(done)}</b> — tap any part of the rail to see what happens in it.</p></div>
     <ol class="tl">${c.timeline.map(([t,d,dn],i)=>{
@@ -815,21 +919,21 @@ function timeHTML(c){
 function returnHTML(c, amount=100){
   const o = outcomeFor(c, amount), net = Math.round(amount*(1-SPLIT.processingFee));
   return `<section class="sec" id="s-return">
-    <div class="sec-head"><h2 class="sec-h">What a pledge could return</h2>
+    <div class="sec-head"><h2 class="sec-h">What an investment could return</h2>
       <span class="sec-meta">Not a guarantee</span></div>
     <p class="sec-sub">Three ways this case can end. The thickness of each path is how likely it is; where it lands is what it pays. These are estimates, and they move as the case does.</p>
-    <div class="amt-pick" role="group" aria-label="Pledge amount to model">${[25,100,250,1000].map(a=>
+    <div class="amt-pick" role="group" aria-label="Amount to model">${[25,100,250,1000].map(a=>
       `<button data-fa="${a}" aria-pressed="${a===amount}">$${num(a)}</button>`).join("")}</div>
     <div class="fanbox reveal" id="fanBox">${outcomeFan(c, amount)}</div>
     <p class="note">${esc(o.note)}</p>
     <h3 class="sub-h">Where an award goes</h3>
     <div class="splitbox reveal">${splitRibbon()}</div>
     <div class="worked">
-      <span><b>$${num(amount)}</b> pledged</span>${icons.back}
+      <span><b>$${num(amount)}</b> invested</span>${icons.back}
       <span><b>$${num(net)}</b> works the case<small>${Math.round(SPLIT.processingFee*100)}% payment processing</small></span>${icons.back}
       <span><b>$${num(o.win)}</b> back if it wins<small>${o.win>amount?"+":""}${Math.round((o.win-amount)/amount*100)}% over ${lockYears(c)} years</small></span>
     </div>
-    <p class="note small">Backers share 41% of any award in proportion to what they put in. Nobody is paid before the plaintiff. If the case loses, a pledge returns nothing.</p>
+    <p class="note small">Backers share 41% of any award in proportion to what they put in. Nobody is paid before the plaintiff. If the case loses, an investment returns nothing.</p>
   </section>`;
 }
 
@@ -913,8 +1017,8 @@ function openCase(id, jumpTo){
       </div>
       ${scoreHeadline(c)}
       <div class="crail-lock">${icons.lock}<span><b>Locked ~${lockYears(c)} years</b>, to ${endYear(c)}</span></div>
-      <button class="btn primary fund-cta">Pledge to this case</button>
-      <p class="crail-note">A pledge, not a payment. No money moves today.</p>
+      <button class="btn primary fund-cta">Invest in this case</button>
+      <p class="crail-note">A commitment, not a payment. No money moves today.</p>
     </aside>
     <nav class="secnav" aria-label="Sections of this case">
       ${SECTIONS.map((s,i)=>`<button data-jump="${s[0]}" class="${i?"":"on"}">${s[1]}</button>`).join("")}
@@ -987,7 +1091,7 @@ function rewireReturns(c, v){
   sec.scrollIntoView({block:"nearest"});
 }
 
-/* Two pledge buttons on one screen is one too many. The floating bar stays
+/* Two invest buttons on one screen is one too many. The floating bar stays
    out of the way while the funding panel itself is in view, and takes over
    once it has scrolled away. */
 let ctaObs = null;
@@ -1276,10 +1380,10 @@ function openRate(id){
   });
 }
 
-/* how the money splits, opened from the pledge sheet */
+/* how the money splits, opened from the invest sheet */
 function openSplit(c, back){
   const o = outcomeFor(c, 100);
-  openSheet(`${back?`<button class="sheet-back" id="spBack">${icons.back}Back to your pledge</button>`:""}
+  openSheet(`${back?`<button class="sheet-back" id="spBack">${icons.back}Back to your investment</button>`:""}
     <h2 id="sheetTitle">Where the money goes</h2>
     <p class="sub">The same split on every case.</p>
     <div class="splitbox in" style="--cat:${CATS[c.cat].color}">${splitRibbon()}</div>
@@ -1288,13 +1392,13 @@ function openSplit(c, back){
       <li><b>6%</b> to LaunchJustice — a 5% platform fee and a 1% contingent return, paid only when a case wins.</li>
       <li><b>41%</b> to backers, split in proportion to what each person put in.</li>
     </ul>
-    <div class="notice">About 3% of every pledge goes to payment processing before it reaches the case. On this case a $100 pledge would return roughly $${num(o.win)} on a win, nothing on a loss, and about $${num(o.settle)} on a typical settlement.</div>
-    <button class="btn primary" id="spClose">${back?"Back to your pledge":"Close"}</button>`);
+    <div class="notice">About 3% of every investment goes to payment processing before it reaches the case. On this case $100 would return roughly $${num(o.win)} on a win, nothing on a loss, and about $${num(o.settle)} on a typical settlement.</div>
+    <button class="btn primary" id="spClose">${back?"Back to your investment":"Close"}</button>`);
   $("#spClose").onclick = back || closeSheet;
   const bb = $("#spBack"); if(bb) bb.onclick = back;
 }
 
-/* ============ pledge ============
+/* ============ investing ============
    The lock-in and the three outcomes are in the flow, not in a footnote,
    and they update as the amount does. Nobody should reach the confirm
    button without having seen how long the money is in for and what happens
@@ -1313,12 +1417,12 @@ function openPledge(id, prefill){
   const PRESETS = [25,50,100,250];
   let amt = was.amt > 0 ? was.amt : 100;
   const custom = was.amt > 0 && !PRESETS.includes(was.amt);
-  openSheet(`<h2 id="sheetTitle">Pledge to this case</h2>
+  openSheet(`<h2 id="sheetTitle">Invest in this case</h2>
   <p class="sub">${esc(c.head)}</p>
   <div class="lockstrip">${icons.lock}<span><b>Locked about ${lockYears(c)} years</b>, expected to end ${endYear(c)}. No early withdrawals.</span></div>
   <label class="f" for="pName">Your name</label>
   <input class="inp" id="pName" maxlength="40" autocomplete="name" value="${esc(was.name !== undefined ? was.name : getName())}" placeholder="First and last name">
-  ${signedIn()?"":`<p class="hint">Pledging as a guest. <button class="link" data-auth="in">Sign in</button> and your pledges follow you to any device.</p>`}
+  ${signedIn()?"":`<p class="hint">Investing as a guest. <button class="link" data-auth="in">Sign in</button> and your investments follow you to any device.</p>`}
   <label class="f" id="amtLbl">Amount</label>
   <div class="amts" role="group" aria-labelledby="amtLbl">${PRESETS.map(a=>`<button data-a="${a}" aria-pressed="${!custom && a===amt}">$${a}</button>`).join("")}</div>
   <div class="money" style="margin-top:8px"><span>$</span><input class="inp" id="pAmt" inputmode="numeric" placeholder="Other amount" aria-label="Other amount" value="${custom?amt:""}"></div>
@@ -1328,13 +1432,13 @@ function openPledge(id, prefill){
   <label class="f" for="pNote">Message to the legal team <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
   <textarea class="inp" id="pNote" rows="2" maxlength="280" placeholder="Why you're backing this case">${esc(was.note||"")}</textarea>
   <label class="check"><input type="checkbox" id="pPublic"${was.pub===false?"":" checked"}> Show my name to other backers</label>
-  <div class="notice">This is a pledge, not a payment. No money moves today. We'll contact you when payments open.</div>
+  <div class="notice">This is a commitment, not a payment. No money moves today. We'll contact you when investing opens.</div>
   <div class="err" id="pErr"></div>
-  <button class="btn primary" id="pGo">Pledge ${usd(amt)}</button>`);
+  <button class="btn primary" id="pGo">Invest ${usd(amt)}</button>`);
   const goBtn=$("#pGo"), other=$("#pAmt"), outBox=$("#pOut");
   const setAmt = a => {
     amt = a;
-    goBtn.textContent = a>0 ? `Pledge ${usd(a)}` : "Pledge";
+    goBtn.textContent = a>0 ? `Invest ${usd(a)}` : "Invest";
     outBox.innerHTML = outcomeStrip(c, Math.max(1, a));
   };
   $("#pSplit").addEventListener("click",()=>{
@@ -1350,7 +1454,7 @@ function openPledge(id, prefill){
   });
   goBtn.addEventListener("click", async ()=>{
     const name=$("#pName").value.trim(), err=$("#pErr");
-    if(!name){ err.textContent="Enter your name so the NGO knows who pledged."; $("#pName").focus(); return; }
+    if(!name){ err.textContent="Enter your name so the NGO knows who invested."; $("#pName").focus(); return; }
     if(!(amt>=1)){ err.textContent="Choose an amount or enter one of at least $1."; return; }
     rememberName(name); goBtn.disabled=true; err.textContent="";
     const pub = $("#pPublic").checked;
@@ -1359,7 +1463,7 @@ function openPledge(id, prefill){
       pledgeDone(c, amt);
     }catch(e){
       goBtn.disabled=false;
-      err.textContent = "Couldn't record the pledge. Check your connection and try again.";
+      err.textContent = "Couldn't record that. Check your connection and try again.";
     }
   });
 }
@@ -1367,8 +1471,8 @@ function pledgeDone(c, amt){
   const o = outcomeFor(c, amt);
   sheet.innerHTML = `<div class="grip"></div><div class="center">
     <div class="done-mark">${icons.check}</div>
-    <h2 id="sheetTitle">Pledge recorded</h2>
-    <p class="sub" style="margin-top:6px">You pledged ${usd(amt)} to ${esc(c.ngo)}. No money has moved. We'll reach out when payments open.</p>
+    <h2 id="sheetTitle">Investment recorded</h2>
+    <p class="sub" style="margin-top:6px">You committed ${usd(amt)} to ${esc(c.ngo)}. No money has moved. We'll reach out when payments open.</p>
     <div class="done-facts">
       <span><b>${lockYears(c)}y</b><small>locked, to ${endYear(c)}</small></span>
       <span><b>$${num(o.win)}</b><small>if the case wins</small></span>
@@ -1383,7 +1487,7 @@ function pledgeDone(c, amt){
 
 /* ============ account UI ============
    Two entry points, one renderer: a block at the foot of the laptop sidebar,
-   and a card in My pledges for the sizes that have no sidebar. */
+   and a card in My investments for the sizes that have no sidebar. */
 function accountHTML(){
   if(!sb) return `<div class="acct"><p class="acct-note">${
     (!auth.ready && CFG.SUPABASE_URL) ? "Connecting&hellip;" : "Accounts need Supabase. See the README."
@@ -1400,7 +1504,7 @@ function accountHTML(){
     </div>`;
   }
   return `<div class="acct">
-    <p class="acct-note">Sign in and your pledges follow you to any device.</p>
+    <p class="acct-note">Sign in and your investments follow you to any device.</p>
     <div class="acct-btns">
       <button class="btn primary sm" data-auth="up">Create account</button>
       <button class="btn ghost sm" data-auth="in">Sign in</button>
@@ -1444,7 +1548,7 @@ function openAuth(mode, initialError){
   const googleOn = !!CFG.GOOGLE_SIGN_IN;
   openSheet(`
     <h2 id="sheetTitle">${up?"Create your account":"Sign in"}</h2>
-    <p class="sub">${up?"So your pledges and comments follow you to any device."
+    <p class="sub">${up?"So your investments and comments follow you to any device."
                       :"Welcome back."}</p>
     ${googleOn?`<button class="btn google" id="gGo">${icons.google}Continue with Google</button>
     <div class="or"><span>or</span></div>`:""}
@@ -1547,7 +1651,7 @@ function checkEmail(email){
   $("#ceClose").focus();
 }
 
-/* ============ my pledges ============ */
+/* ============ my investments ============ */
 function renderMine(){
   const v=$("#v-mine"); const actors = myActors();
   const mine = store.pledges.filter(p=>actors.includes(p.actorId)).sort((a,b)=>b.createdAt-a.createdAt);
@@ -1561,12 +1665,12 @@ function renderMine(){
     return acc; }, {win:0, settle:0, exp:0});
   const longest = cases.length ? Math.max(...cases.map(id=>endYear(byId[id]))) : null;
 
-  v.innerHTML = `<div class="head"><h1>My pledges</h1><p>${getName()?`Pledging as ${esc(getName())}`:"Pledges you make appear here."}</p></div>
+  v.innerHTML = `<div class="head"><h1>My investments</h1><p>${getName()?`Investing as ${esc(getName())}`:"Investments you make appear here."}</p></div>
   <div class="list">
     <div class="acct-card" data-account></div>
     ${mine.length?`
     <div class="port">
-      <div class="port-row"><span><small>Total pledged</small><b>${usd(total)}</b></span>
+      <div class="port-row"><span><small>Total invested</small><b>${usd(total)}</b></span>
         <span><small>Cases backed</small><b>${cases.length}</b></span>
         <span><small>Locked until</small><b>${longest||"—"}</b></span></div>
       <div class="port-proj">
@@ -1581,7 +1685,7 @@ function renderMine(){
       return `<button class="prow" data-id="${c.id}">
         <div><div class="t">${esc(c.head)}</div><small>${esc(c.ngo)} · ${agoText(p.createdAt)} · locked to ${endYear(c)}</small></div>
         <div class="prow-r"><b>${usd(p.amount)}</b><small>$${num(o.win)} if won</small></div></button>`; }).join("")
-    : `<div class="empty">You haven't pledged yet. Watch a few clips and back a case you believe in.<br><br><button class="btn primary" style="width:auto" id="goWatch">Watch cases</button></div>`}
+    : `<div class="empty">You haven't invested yet. Watch a few clips and back a case you believe in.<br><br><button class="btn primary" style="width:auto" id="goWatch">Watch cases</button></div>`}
   </div>`;
   v.querySelectorAll(".prow").forEach(b=>b.addEventListener("click",()=>openCase(b.dataset.id)));
   const gw=v.querySelector("#goWatch"); gw && gw.addEventListener("click",()=>go("watch"));

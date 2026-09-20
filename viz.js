@@ -221,7 +221,7 @@ function runway(c){
 /* =====================================================================
    5. Returns — the outcome fan
    ---------------------------------------------------------------------
-   One pledge today, three ways it can end. Branch thickness is how likely
+   One investment today, three ways it can end. Branch thickness is how likely
    that ending is and height is what it pays, so the eye reads risk and
    reward in the same glance. Deliberately not a bar chart: bars imply a
    measured quantity, and these are possibilities.
@@ -244,7 +244,7 @@ function outcomeFan(c, amount){
       <text class="fan-amt" x="${XE+12}" y="${r.y-1}">${r.amt ? "$"+num(r.amt) : "$0"}</text>
       <text class="fan-sub" x="${XE+12}" y="${r.y+14}">${xml(r.label)} · ${Math.round(r.p*100)}% likely</text></g>`;
   });
-  return `<svg class="fan" viewBox="0 0 ${W} ${H}" role="img" aria-label="Outcome fan for a ${num(amount)} dollar pledge: won pays ${num(o.win)} dollars at ${Math.round(o.p.win*100)} percent, settled pays ${num(o.settle)} at ${Math.round(o.p.settle*100)} percent, lost pays nothing at ${Math.round(o.p.lose*100)} percent.">
+  return `<svg class="fan" viewBox="0 0 ${W} ${H}" role="img" aria-label="Outcome fan for a ${num(amount)} dollar investment: won pays ${num(o.win)} dollars at ${Math.round(o.p.win*100)} percent, settled pays ${num(o.settle)} at ${Math.round(o.p.settle*100)} percent, lost pays nothing at ${Math.round(o.p.lose*100)} percent.">
     <line class="fan-axis" x1="${XS}" y1="16" x2="${XS}" y2="${H-16}"/>
     <g>${paths}</g>
     <g class="fan-start"><circle cx="${XS}" cy="${y0}" r="5.5"/>
