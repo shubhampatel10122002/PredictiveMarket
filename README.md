@@ -80,8 +80,12 @@ still say `pledge`, because the Supabase schema does.
   to payment processing before it reaches the case.
 
 `outcomeFor()` in `data.js` is the single place this is computed. Each case sets
-an `awardMult` (expected award as a multiple of its funding goal), which is what
-makes one case return more per dollar than another.
+what every invested dollar comes back as: `winMult` on a win, between 2x and 4x
+(the longer the odds, the higher), and `settleMult` on a settlement, never below
+1.25x, so a settlement always returns more than went in. A loss returns nothing.
+The award a win implies is `goal × winMult ÷ 41%`, which keeps the multiples
+consistent with the split ribbon. The fan, the invest sheet and the portfolio
+show each gain as a percentage on top of what was put in.
 
 ## Discussion
 

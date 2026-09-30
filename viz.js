@@ -228,10 +228,10 @@ function runway(c){
    ===================================================================== */
 function outcomeFan(c, amount){
   const o = outcomeFor(c, amount);
-  const W = 340, H = 186, XS = 22, XE = 214, rows = [
-    {k:"win",    y:34,  label:"Case won",  amt:o.win,    p:o.p.win},
-    {k:"settle", y:96,  label:"Settled",   amt:o.settle, p:o.p.settle},
-    {k:"lose",   y:156, label:"Case lost", amt:o.lose,   p:o.p.lose}
+  const W = 340, H = 186, XS = 22, XE = 206, rows = [
+    {k:"win",    y:34,  label:"Case won",  amt:o.win,    gain:o.gain.win,    p:o.p.win},
+    {k:"settle", y:96,  label:"Settled",   amt:o.settle, gain:o.gain.settle, p:o.p.settle},
+    {k:"lose",   y:156, label:"Case lost", amt:o.lose,   gain:0,             p:o.p.lose}
   ];
   const y0 = 96;
   let paths = "", ends = "";
@@ -241,10 +241,11 @@ function outcomeFan(c, amount){
       d="M${XS} ${y0}C${XS+72} ${y0} ${XE-78} ${r.y} ${XE} ${r.y}"/>`;
     ends += `<g class="fan-end fan-${r.k}" style="--i:${i}">
       <circle class="fan-node" cx="${XE}" cy="${r.y}" r="4.5"/>
-      <text class="fan-amt" x="${XE+12}" y="${r.y-1}">${r.amt ? "$"+num(r.amt) : "$0"}</text>
+      <text class="fan-amt" x="${XE+12}" y="${r.y-1}">${r.amt ? "$"+num(r.amt) : "$0"}${
+        r.gain ? `<tspan class="fan-gain" dx="6">+${r.gain}%</tspan>` : ""}</text>
       <text class="fan-sub" x="${XE+12}" y="${r.y+14}">${xml(r.label)} · ${Math.round(r.p*100)}% likely</text></g>`;
   });
-  return `<svg class="fan" viewBox="0 0 ${W} ${H}" role="img" aria-label="Outcome fan for a ${num(amount)} dollar investment: won pays ${num(o.win)} dollars at ${Math.round(o.p.win*100)} percent, settled pays ${num(o.settle)} at ${Math.round(o.p.settle*100)} percent, lost pays nothing at ${Math.round(o.p.lose*100)} percent.">
+  return `<svg class="fan" viewBox="0 0 ${W} ${H}" role="img" aria-label="Outcome fan for a ${num(amount)} dollar investment: won pays ${num(o.win)} dollars, ${o.gain.win} percent more, at ${Math.round(o.p.win*100)} percent likely; settled pays ${num(o.settle)}, ${o.gain.settle} percent more, at ${Math.round(o.p.settle*100)} percent likely; lost pays nothing at ${Math.round(o.p.lose*100)} percent likely.">
     <line class="fan-axis" x1="${XS}" y1="16" x2="${XS}" y2="${H-16}"/>
     <g>${paths}</g>
     <g class="fan-start"><circle cx="${XS}" cy="${y0}" r="5.5"/>
