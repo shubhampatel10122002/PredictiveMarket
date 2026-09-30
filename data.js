@@ -30,7 +30,7 @@ const PLATFORM = {
   casesFunded: 1847,
   resolved: 412,
   wins: 289,
-  paidBack: 61200000,
+  paidBack: 152400000,
   liveNow: 18640          /* people on the platform right now */
 };
 
@@ -91,7 +91,7 @@ const CASES = [
       {label:"Community support", weight:.12, score:86, note:"24,180 backers and 41 partner organisations signed on."}
     ]},
   start:"Jan 2026", startYear:2026, stageIdx:1, stageMonths:[7,9,18,6,8,14],
-  outcomes:{win:.21, settle:.37, lose:.42, awardMult:3.1, settleShare:.46,
+  outcomes:{win:.21, settle:.37, lose:.42, winMult:2.4, settleMult:1.3,
             note:"A win here is mostly injunctive: the money back to backers comes from the fee award and the contingent share."},
   why:[
     {kind:"dots", value:23, of:100, label:"of claims wait over 4 years", note:"Up from 4 in 100 a decade ago."},
@@ -148,7 +148,7 @@ const CASES = [
       {label:"Community support", weight:.14, score:88, note:"The township board voted 6-1 to support the petition."}
     ]},
   start:"Mar 2026", startYear:2026, stageIdx:0, stageMonths:[9,8,15,5,7,12],
-  outcomes:{win:.28, settle:.38, lose:.34, awardMult:2.6, settleShare:.52,
+  outcomes:{win:.28, settle:.38, lose:.34, winMult:2.5, settleMult:1.35,
             note:"Most permit challenges that do not lose end in a consent decree with new monitoring conditions."},
   why:[
     {kind:"dots", value:11, of:12, label:"quarterly tests failed", note:"Every test but one since 2023."},
@@ -205,7 +205,7 @@ const CASES = [
       {label:"Community support", weight:.14, score:94, note:"31,447 backers, the highest count on the platform this quarter."}
     ]},
   start:"Apr 2026", startYear:2026, stageIdx:2, stageMonths:[4,6,11,4,5,10],
-  outcomes:{win:.31, settle:.46, lose:.23, awardMult:2.9, settleShare:.58,
+  outcomes:{win:.31, settle:.46, lose:.23, winMult:3.0, settleMult:1.6,
             note:"Fee shifting under the ordinance is what makes a backer return realistic here."},
   why:[
     {kind:"dots", value:40, of:52, label:"of the 52 units got a notice", note:"All within six days of the sale closing."},
@@ -277,7 +277,7 @@ const CASES = [
       {label:"Community support", weight:.14, score:72, note:"9,116 backers and two farmworker unions."}
     ]},
   start:"Nov 2025", startYear:2025, stageIdx:2, stageMonths:[5,7,20,6,8,13],
-  outcomes:{win:.19, settle:.32, lose:.49, awardMult:3.4, settleShare:.41,
+  outcomes:{win:.19, settle:.32, lose:.49, winMult:3.5, settleMult:1.5,
             note:"Collectability is the risk here, not the merits. A judgment the defendant cannot pay returns nothing."},
   why:[
     {kind:"dots", value:3, of:10, label:"of each shift went unpaid", note:"Three hours in ten, on the workers' own logs."},
@@ -334,7 +334,7 @@ const CASES = [
       {label:"Community support", weight:.14, score:80, note:"19,655 backers and the regional disability rights council."}
     ]},
   start:"Sep 2025", startYear:2025, stageIdx:3, stageMonths:[5,6,14,4,6,11],
-  outcomes:{win:.18, settle:.58, lose:.24, awardMult:2.4, settleShare:.62,
+  outcomes:{win:.18, settle:.58, lose:.24, winMult:2.0, settleMult:1.25,
             note:"This case is in settlement talks. The realistic path is a consent decree with a fee award, not a trial verdict."},
   why:[
     {kind:"dots", value:21, of:100, label:"of ramps failed inspection", note:"In the authority's own audit."},
@@ -391,7 +391,7 @@ const CASES = [
       {label:"Community support", weight:.12, score:69, note:"6,208 backers and the district's own parent-teacher council."}
     ]},
   start:"Aug 2026", startYear:2026, stageIdx:0, stageMonths:[10,8,16,5,7,13],
-  outcomes:{win:.16, settle:.23, lose:.61, awardMult:3.8, settleShare:.38,
+  outcomes:{win:.16, settle:.23, lose:.61, winMult:4.0, settleMult:1.5,
             note:"A long-odds, high-consequence case. It is on the platform because the precedent matters, not because the odds are good."},
   why:[
     {kind:"stat", value:"14,200", label:"students scanned every morning", note:"Two doors, matched against a roster."},
@@ -436,18 +436,21 @@ const endYear     = c => c.startYear + Math.ceil(totalMonths(c)/12);
 const monthsDone  = c => c.stageMonths.slice(0, c.stageIdx).reduce((a,b)=>a+b,0) + c.stageMonths[c.stageIdx]*0.5;
 
 /* What a pledge is worth in each outcome.
+   Each case sets what every invested dollar comes back as: winMult on a win
+   (2x to 4x, the longer the odds the higher) and settleMult on a settlement
+   (never below 1.25x, so a settlement always returns more than went in).
    Of every dollar pledged, ~3% goes to payment processing and the rest works
-   the case. On a win the backers' pool is 41% of the award, split in
-   proportion to what each person put in. */
+   the case. The backers' pool is 41% of the award, split in proportion to
+   what each person put in, so a win at winMult means an award of
+   goal * winMult / 41%. A loss returns nothing. */
 function outcomeFor(c, amount){
   const o = c.outcomes;
-  const award = c.goal * o.awardMult;
-  const share = amount / c.goal;                    /* this backer's share of the raise */
-  const win   = award * SPLIT.backers * share;
+  const award = c.goal * o.winMult / SPLIT.backers;
   return {
-    win:    Math.round(win),
-    settle: Math.round(win * o.settleShare),
+    win:    Math.round(amount * o.winMult),
+    settle: Math.round(amount * o.settleMult),
     lose:   0,
+    gain: {win: Math.round((o.winMult-1)*100), settle: Math.round((o.settleMult-1)*100)},  /* % on top of what went in */
     p: {win:o.win, settle:o.settle, lose:o.lose},
     award, note:o.note
   };
@@ -529,7 +532,7 @@ const SEED_COMMENTS = {
  {n:"Deshawn Miller", s:"support", b:true, h:2, l:3188, t:"Eleven months of logging every broken ramp on my phone felt pointless while I was doing it. It is now fourteen months of the authority's own records plus mine. Keep your receipts, everyone.",
   r:[{n:"Claire Donnelly", role:"Lead counsel, Equal Route Coalition", h:2, t:"His log is what let us ask for theirs with enough specificity that they could not narrow the request. The case exists because one rider was stubborn with a notes app."}]},
  {n:"Miriam Voss", s:"question", b:false, h:6, l:744, t:"You are in mediation and the score is 76, but the returns panel says injunctive relief only. What does a backer actually get if this settles well?",
-  r:[{n:"Claire Donnelly", role:"Lead counsel, Equal Route Coalition", h:5, t:"A fee award under the ADA, which is where the backer share comes from, and it is modest against the pledge. I would rather say that plainly than let anyone back this expecting the housing case's numbers. People fund this one because 4,900 riders get a working ramp."}]},
+  r:[{n:"Claire Donnelly", role:"Lead counsel, Equal Route Coalition", h:5, t:"A fee award under the ADA, which is where the backer share comes from. On a settlement that is about a quarter on top of what you put in, the lowest return on the platform, and I would rather say that plainly than let anyone back this expecting the housing case's numbers. People fund this one because 4,900 riders get a working ramp."}]},
  {n:"Otis Bramble", s:"support", b:true, h:10, l:1421, t:"Median fix took nine days against a contract that says two. Nobody had to break the law to produce that. They just had to not care."},
  {n:"Junko Arai", s:"support", b:true, h:15, l:988, t:"My brother stopped taking the bus to his job and lost it. The bus did not stop running. It just stopped working for him."},
  {n:"Evan Doherty", s:"skeptical", b:false, h:22, l:402, t:"Consent decrees expire. Five years from now we are back here with a new board and the same ramps. The lasting-change score of 85 assumes an institution that wants to comply."},

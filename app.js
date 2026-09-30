@@ -931,7 +931,7 @@ function returnHTML(c, amount=100){
     <div class="worked">
       <span><b>$${num(amount)}</b> invested</span>${icons.back}
       <span><b>$${num(net)}</b> works the case<small>${Math.round(SPLIT.processingFee*100)}% payment processing</small></span>${icons.back}
-      <span><b>$${num(o.win)}</b> back if it wins<small>${o.win>amount?"+":""}${Math.round((o.win-amount)/amount*100)}% over ${lockYears(c)} years</small></span>
+      <span><b>$${num(o.win)}</b> back if it wins<small>+${o.gain.win}% over ${lockYears(c)} years</small></span>
     </div>
     <p class="note small">Backers share 41% of any award in proportion to what they put in. Nobody is paid before the plaintiff. If the case loses, an investment returns nothing.</p>
   </section>`;
@@ -1392,7 +1392,7 @@ function openSplit(c, back){
       <li><b>6%</b> to LaunchJustice — a 5% platform fee and a 1% contingent return, paid only when a case wins.</li>
       <li><b>41%</b> to backers, split in proportion to what each person put in.</li>
     </ul>
-    <div class="notice">About 3% of every investment goes to payment processing before it reaches the case. On this case $100 would return roughly $${num(o.win)} on a win, nothing on a loss, and about $${num(o.settle)} on a typical settlement.</div>
+    <div class="notice">About 3% of every investment goes to payment processing before it reaches the case. On this case $100 would return roughly $${num(o.win)} on a win, about $${num(o.settle)} on a typical settlement, and nothing on a loss.</div>
     <button class="btn primary" id="spClose">${back?"Back to your investment":"Close"}</button>`);
   $("#spClose").onclick = back || closeSheet;
   const bb = $("#spBack"); if(bb) bb.onclick = back;
@@ -1405,11 +1405,11 @@ function openSplit(c, back){
    if the case loses. */
 function outcomeStrip(c, amt){
   const o = outcomeFor(c, amt);
-  const rows = [["win","Case won",o.win,o.p.win],["settle","Settled",o.settle,o.p.settle],["lose","Case lost",o.lose,o.p.lose]];
-  return `<div class="ostrip">${rows.map(([k,l,v,p])=>`
+  const rows = [["win","Case won",o.win,o.gain.win,o.p.win],["settle","Settled",o.settle,o.gain.settle,o.p.settle],["lose","Case lost",o.lose,0,o.p.lose]];
+  return `<div class="ostrip">${rows.map(([k,l,v,g,p])=>`
     <div class="os os-${k}"><span class="os-bar" style="--p:${Math.round(p*100)}%"></span>
       <span class="os-l">${l}</span><span class="os-p">${Math.round(p*100)}%</span>
-      <b class="os-v">${v?"$"+num(v):"$0"}</b></div>`).join("")}</div>`;
+      <b class="os-v">${v?"$"+num(v):"$0"}</b><span class="os-g">${g?`+${g}%`:""}</span></div>`).join("")}</div>`;
 }
 function openPledge(id, prefill){
   const c = byId[id];
@@ -1664,6 +1664,7 @@ function renderMine(){
     acc.exp += o.win*o.p.win + o.settle*o.p.settle;
     return acc; }, {win:0, settle:0, exp:0});
   const longest = cases.length ? Math.max(...cases.map(id=>endYear(byId[id]))) : null;
+  const up = v => total>0 && v>total ? `<em>+${Math.round((v-total)/total*100)}%</em>` : "";
 
   v.innerHTML = `<div class="head"><h1>My investments</h1><p>${getName()?`Investing as ${esc(getName())}`:"Investments you make appear here."}</p></div>
   <div class="list">
@@ -1674,8 +1675,8 @@ function renderMine(){
         <span><small>Cases backed</small><b>${cases.length}</b></span>
         <span><small>Locked until</small><b>${longest||"—"}</b></span></div>
       <div class="port-proj">
-        <div class="pp pp-win"><small>If all won</small><b>${usd(proj.win)}</b></div>
-        <div class="pp pp-set"><small>If all settled</small><b>${usd(proj.settle)}</b></div>
+        <div class="pp pp-win"><small>If all won</small><b>${usd(proj.win)}</b>${up(proj.win)}</div>
+        <div class="pp pp-set"><small>If all settled</small><b>${usd(proj.settle)}</b>${up(proj.settle)}</div>
         <div class="pp pp-lose"><small>If all lost</small><b>$0</b></div>
       </div>
       <p class="port-note">Outcomes are estimates, never a promise, and no money has moved.</p>

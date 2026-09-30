@@ -685,7 +685,9 @@ label.f{display:block;font-size:14px;font-weight:600;margin:14px 0 6px}
 .fan-win .fan-node{stroke:var(--up)} .fan-settle .fan-node{stroke:var(--merit)} .fan-lose .fan-node{stroke:var(--ink-soft)}
 .fan-amt{fill:var(--ink);font-size:17px;font-weight:800;font-family:var(--ui);letter-spacing:-.02em}
 .fan-win .fan-amt{fill:var(--up)}
+.fan-gain{fill:var(--up);font-size:11.5px;font-weight:700;letter-spacing:0}
 .fan-sub{fill:var(--muted);font-size:11px;font-family:var(--ui)}
+.fan-end text{stroke:none}
 .reveal .fan-end{opacity:0}
 .reveal.in .fan-end{animation:fadeUp .5s ease forwards;animation-delay:calc(var(--i)*130ms + 420ms)}
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -922,6 +924,7 @@ line.bl-tick{stroke:var(--impact);stroke-width:2.4;stroke-linecap:round}
 .os-p{position:relative;color:var(--muted);font-size:12px}
 .os-v{position:relative;margin-left:auto;font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
 .os-win .os-v{color:var(--up)}
+.os-g{position:relative;min-width:38px;text-align:right;font-size:11.5px;font-weight:700;color:var(--up);font-variant-numeric:tabular-nums}
 .splitlist{margin:14px 0 0;padding:0 0 0 2px;list-style:none;display:flex;flex-direction:column;gap:9px;font-size:14px;line-height:1.45}
 .splitlist b{font-weight:800}
 .link.sm{font-size:12.5px;font-weight:600}
@@ -943,6 +946,7 @@ line.bl-tick{stroke:var(--impact);stroke-width:2.4;stroke-linecap:round}
 .pp small{font-size:10.5px;color:var(--muted)}
 .pp b{font-size:15px;font-weight:800;letter-spacing:-.02em}
 .pp-win b{color:var(--up)} .pp-set b{color:var(--merit)} .pp-lose b{color:var(--ink-soft)}
+.pp em{font-style:normal;font-size:11px;font-weight:700;color:var(--up)}
 .port-note{margin:11px 0 0;font-size:11.5px;color:var(--muted)}
 .prow-r{text-align:right;display:flex;flex-direction:column;line-height:1.2}
 .prow-r b{font-size:17px}
