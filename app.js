@@ -335,7 +335,7 @@ const clips = new Set();
 /* a case's own hero clip, and the short clips in its clip section, are the
    same kind of thing to the player */
 const caseClip = c => ({beats:c.beats, video:c.video, embed:c.embed, poster:c.poster, cat:c.cat,
-                        title:c.head, photo: c.hero && c.hero.src, kb:0});
+                        title:c.head, photo: c.hero && c.hero.src, kb:0, lead:c.heroLead});
 /* each short clip frames the photograph differently, so a rail of five does
    not look like the same still five times */
 const shortClip = (c, k) => ({...c.clips[k], video:c.clips[k].src, cat:c.cat,
@@ -420,13 +420,14 @@ const caseItems = c => [clipItem(c,-1), ...c.clips.map((_,k)=>clipItem(c,k))];
    people speaking is what someone arriving should meet first; the story-style
    clips follow. Behind the footage the rest is dealt round by round, so two
    reels from the same case are never adjacent: heroes first, then each case's
-   first clip, and so on. */
+   first clip, and so on. Footage uploaded from /admin carries `lead` and
+   counts as filmed. */
 function allClipItems(){
   const lists = ordered().map(caseItems);
   const filmed = [], pending = [];
   lists.forEach(l=>{
     const rest = [];
-    l.forEach(it => it.src.embed ? filmed.push(it) : rest.push(it));
+    l.forEach(it => (it.src.embed || it.src.lead) ? filmed.push(it) : rest.push(it));
     pending.push(rest);
   });
   const out = [...filmed];
@@ -1718,3 +1719,8 @@ $("#nav").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>g
 
 renderFeed(); renderCases(); go("watch"); refresh(); renderAccount();
 initDb();
+
+/* /#case=<id> opens straight onto a case, which is how the admin's
+   "View on site" lands on the one you were editing */
+const linkedCase = (location.hash.match(/^#case=([\w-]+)/) || [])[1];
+if(linkedCase && byId[linkedCase]){ history.replaceState(null, "", location.pathname); openCase(linkedCase); }

@@ -28,6 +28,8 @@ members would look, so the product can be shown rather than described.
 | `viz.js` | Every chart, drawn as inline SVG |
 | `app.js` | State, screens and interaction |
 | `config.js` | Supabase project URL and publishable key |
+| `cms.js` | Folds cases published from the admin into `CASES`, then starts `app.js` |
+| `admin/` | The internal admin at `/admin`: cases, clips and video, media, pledges, comments, team |
 | `supabase/schema.sql` | Tables, row level security policies and grants |
 | `clips/` | Vertical clip files, and how to add real ones |
 | `tools/` | The clip renderer. Not shipped, not loaded by the app |
@@ -188,6 +190,40 @@ serves ranges.
 
 A clip that has a video does not draw the beat captions over it: real footage
 carries its own words. The beats stay in the data as the written version.
+
+## The admin
+
+`/admin` is the internal side: the same domain, linked from nowhere, behind a
+sign-in. It is where cases, clips and video go in.
+
+- **Overview**: live cases, clips still waiting for video, the latest pledges and comments
+- **Cases**: every case, demo and new. The editor covers everything the case page
+  shows, with the site's own score dial, waterfall, bloom and runway redrawn as
+  you type, and a Raw data tab for anything the form does not cover
+- **Clips & video**: every clip on the platform. Upload vertical video straight
+  from the browser, or paste a YouTube, Shorts or Vimeo link. The length and a
+  poster frame are read from the file, and the case saves the moment the upload
+  lands. Uploaded footage leads the Watch feed
+- **Media library**, **Pledges** (with real names and notes, and a CSV export),
+  **Comments** (delete from the site), **Team** (who can sign in)
+
+How it fits together:
+
+- Cases written in the admin live in the `cases` table, each row holding a case
+  in exactly the shape of a `CASES` entry. `published` puts it on the site,
+  replacing a demo case with the same id; `hidden` takes it off; `draft` is
+  admin only. Editing a demo case saves a copy that replaces it, and "Revert to
+  demo data" deletes the copy.
+- The site loads `cms.js` in place of `app.js`. It asks for the live rows, folds
+  them into `CASES`, then starts the app. If Supabase is slow or down the site
+  starts on the demo data after 2.5 seconds.
+- Video and photos go to the public `media` storage bucket. Supabase's free plan
+  caps a single file at 50 MB, which is plenty for a minute of 720p vertical video.
+- Access is the `admins` table, checked by the database on every write through
+  `is_admin()`, so the hidden URL is not the lock. A leaked link opens a sign-in
+  screen, and a signed-in stranger still cannot change anything. Admins sign in
+  with an ordinary site account on a confirmed email; add people under Team.
+- `/#case=<id>` on the site opens a case directly, which is what "View on site" uses.
 
 ## Run locally
 
