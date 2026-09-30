@@ -220,3 +220,117 @@ grant insert (comment_id, actor_id, user_id) on public.comment_likes to anon, au
 alter publication supabase_realtime add table public.pledges;
 alter publication supabase_realtime add table public.comments;
 alter publication supabase_realtime add table public.comment_likes;
+
+
+-- ================================================================ admin ======
+-- Everything /admin needs. Access is one list of emails, checked against the
+-- signed-in account's confirmed address, so a hidden URL is never the lock.
+
+create table public.admins (
+  email text primary key check (email = lower(email) and email like '%@%'),
+  added_by text,
+  created_at timestamptz not null default now()
+);
+comment on table public.admins is
+  'Who can use /admin. Matched against the signed-in account''s confirmed email.';
+
+create function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from auth.users u
+    join public.admins a on a.email = lower(u.email)
+    where u.id = (select auth.uid())
+      and u.email_confirmed_at is not null
+  );
+$$;
+revoke all on function public.is_admin() from public;
+grant execute on function public.is_admin() to anon, authenticated;
+
+alter table public.admins enable row level security;
+create policy "admins read admins" on public.admins
+  for select to authenticated using ((select public.is_admin()));
+create policy "admins add admins" on public.admins
+  for insert to authenticated with check ((select public.is_admin()));
+create policy "admins remove admins" on public.admins
+  for delete to authenticated using ((select public.is_admin()));
+revoke all on public.admins from anon, authenticated;
+grant select, insert, delete on public.admins to authenticated;
+
+-- The first admin has to be added here, by hand:
+--   insert into public.admins (email, added_by) values ('you@example.com', 'setup');
+
+-- Cases written in the admin. data has exactly the shape of a CASES entry in
+-- data.js. published: on the site, replacing a demo case with the same id.
+-- hidden: taken off the site. draft: admin only.
+create table public.cases (
+  id text primary key check (id ~ '^[a-z0-9][a-z0-9-]{1,62}$'),
+  data jsonb not null check (jsonb_typeof(data) = 'object'),
+  status text not null default 'draft' check (status in ('draft','published','hidden')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by uuid references auth.users(id) on delete set null
+);
+create index cases_updated_by_idx on public.cases (updated_by);
+
+create trigger cases_touch_updated_at
+  before update on public.cases
+  for each row execute function public.touch_updated_at();
+
+alter table public.cases enable row level security;
+create policy "read live cases" on public.cases
+  for select to anon, authenticated
+  using (status <> 'draft' or (select public.is_admin()));
+create policy "admins add cases" on public.cases
+  for insert to authenticated with check ((select public.is_admin()));
+create policy "admins edit cases" on public.cases
+  for update to authenticated
+  using ((select public.is_admin())) with check ((select public.is_admin()));
+create policy "admins delete cases" on public.cases
+  for delete to authenticated using ((select public.is_admin()));
+revoke all on public.cases from anon, authenticated;
+grant select on public.cases to anon, authenticated;
+grant insert, update, delete on public.cases to authenticated;
+
+-- Moderation, and the one way real names and notes leave the database.
+create policy "admins delete comments" on public.comments
+  for delete to authenticated using ((select public.is_admin()));
+grant delete on public.comments to authenticated;
+
+create function public.admin_pledges()
+returns setof public.pledges
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'not an admin' using errcode = '42501';
+  end if;
+  return query select * from public.pledges order by created_at desc limit 5000;
+end;
+$$;
+revoke all on function public.admin_pledges() from public, anon;
+grant execute on function public.admin_pledges() to authenticated;
+
+-- Video and photographs. Public to read, admins to write.
+insert into storage.buckets (id, name, public, allowed_mime_types)
+values ('media', 'media', true, array['video/*','image/*'])
+on conflict (id) do nothing;
+
+create policy "admins list media" on storage.objects
+  for select to authenticated using (bucket_id = 'media' and (select public.is_admin()));
+create policy "admins upload media" on storage.objects
+  for insert to authenticated with check (bucket_id = 'media' and (select public.is_admin()));
+create policy "admins replace media" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'media' and (select public.is_admin()))
+  with check (bucket_id = 'media' and (select public.is_admin()));
+create policy "admins delete media" on storage.objects
+  for delete to authenticated using (bucket_id = 'media' and (select public.is_admin()));
