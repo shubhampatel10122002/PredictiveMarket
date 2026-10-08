@@ -687,12 +687,6 @@ function renderCases(){
   const v = $("#v-cases");
   v.innerHTML = `<div class="head">
       <h1>Cases</h1>
-      <div class="platform" id="platform">
-        <span><b data-count="${PLATFORM.committed}" data-fmt="usd">$0</b><small>committed</small></span>
-        <span><b data-count="${PLATFORM.members}" data-fmt="short">0</b><small>members</small></span>
-        <span><b data-count="${PLATFORM.casesFunded}">0</b><small>cases funded</small></span>
-        <span><b data-count="${PLATFORM.paidBack}" data-fmt="usd">$0</b><small>returned to backers</small></span>
-      </div>
       <div class="ticker-live" id="liveTick"><i></i><span></span></div>
       <input class="search" type="search" placeholder="Search by issue, NGO or defendant" aria-label="Search cases" value="${esc(query)}">
       <div class="chips" role="group" aria-label="Filter by issue">
@@ -706,16 +700,6 @@ function renderCases(){
   v.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{ filter=b.dataset.f; v.querySelectorAll(".chip").forEach(x=>x.setAttribute("aria-pressed",x===b)); renderCaseList(); }));
   renderTrendRow();
   renderCaseList();
-  /* the platform totals count themselves up the first time they are seen */
-  const pf = v.querySelector("#platform");
-  const pio = new IntersectionObserver(es=>es.forEach(e=>{
-    if(!e.isIntersecting) return;
-    pf.querySelectorAll("[data-count]").forEach((el,i)=>setTimeout(()=>
-      countUp(el, +el.dataset.count, 1100,
-        el.dataset.fmt==="usd" ? usdShort : el.dataset.fmt==="short" ? numShort : num), i*90));
-    pio.disconnect();
-  }),{root:v, threshold:.4});
-  pio.observe(pf);
   startLiveTicker();
 }
 
@@ -1696,7 +1680,7 @@ function renderMine(){
 }
 
 /* ============ navigation ============ */
-let current="watch", prevView=null;
+let current="cases", prevView=null;
 function go(view){
   /* the score breakdown always belongs to the case behind it */
   if(view!=="case" && view!=="score" && current!=="case" && current!=="score") prevView=null;
@@ -1717,7 +1701,8 @@ function go(view){
 }
 $("#nav").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>go(b.dataset.go)));
 
-renderFeed(); renderCases(); go("watch"); refresh(); renderAccount();
+/* Cases is the home page; Watch is one tap away */
+renderFeed(); renderCases(); go("cases"); refresh(); renderAccount();
 initDb();
 
 /* /#case=<id> opens straight onto a case, which is how the admin's
