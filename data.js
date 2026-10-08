@@ -22,18 +22,6 @@ const CATS = {
   privacy:{label:"Privacy", color:"#DB2777"}
 };
 
-/* Platform-wide numbers, shown on the Cases page so the demo reads as a
-   running product rather than a prototype with six rows in it. */
-const PLATFORM = {
-  members: 2412880,
-  committed: 318400000,
-  casesFunded: 1847,
-  resolved: 412,
-  wins: 289,
-  paidBack: 152400000,
-  liveNow: 18640          /* people on the platform right now */
-};
-
 /* The six litigation stages from the business plan, with the share of a
    typical case each one takes. Durations are per case; these are defaults. */
 const STAGES = ["Pre-filing","Pleadings","Discovery","Trial","Decision","Appeal"];

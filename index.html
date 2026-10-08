@@ -15,19 +15,19 @@
 <body>
 <div class="shell" id="shell">
   <div class="views">
-    <section class="view on" id="v-watch" aria-label="Case clips"></section>
-    <section class="view" id="v-cases" aria-label="Browse cases"></section>
+    <section class="view" id="v-watch" aria-label="Case clips"></section>
+    <section class="view on" id="v-cases" aria-label="Browse cases"></section>
     <section class="view" id="v-case" aria-label="Case details"></section>
     <section class="view" id="v-score" aria-label="How this case is scored"></section>
     <section class="view" id="v-mine" aria-label="My investments"></section>
     <div class="sticky-cta" id="cta"><button class="btn primary" id="ctaBtn">Invest in this case</button></div>
   </div>
-  <nav class="nav dark" id="nav" aria-label="Main">
+  <nav class="nav" id="nav" aria-label="Main">
     <div class="brand"><span class="wordmark">Launch<span>Justice</span></span></div>
-    <button data-go="watch" aria-current="page">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="3"/><path d="M10.5 9.5v5l4-2.5z" fill="currentColor"/></svg>Watch</button>
-    <button data-go="cases">
+    <button data-go="cases" aria-current="page">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0zM8 21h8"/></svg>Cases</button>
+    <button data-go="watch">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="3"/><path d="M10.5 9.5v5l4-2.5z" fill="currentColor"/></svg>Watch</button>
     <button data-go="mine">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>My investments</button>
     <div class="nav-foot" data-account></div>

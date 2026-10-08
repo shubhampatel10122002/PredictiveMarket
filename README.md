@@ -3,9 +3,9 @@
 A no-build, static web app for discovering and pledging to public-interest legal
 cases, written to show the product running at full scale.
 
+- **Cases**: the home page. A live activity ticker, a "Trending now" rail, search and filters
 - **Watch**: vertical feed of every clip on the platform, dealt so two reels
   from the same case are never adjacent, trending cases first
-- **Cases**: platform totals, a live activity ticker, a "Trending now" rail, search and filters
 - **Case page**: an interactive banner, a rolling comment highlight, why-it-matters
   stats, both headline scores, the discussion, the lock-in and stage runway, the
   outcome fan, the clip rail, the people, and the filings underneath
