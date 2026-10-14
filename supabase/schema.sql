@@ -334,3 +334,90 @@ create policy "admins replace media" on storage.objects
   with check (bucket_id = 'media' and (select public.is_admin()));
 create policy "admins delete media" on storage.objects
   for delete to authenticated using (bucket_id = 'media' and (select public.is_admin()));
+
+-- Admins create logins for each other: an email and a password, usable at once.
+-- No email is sent. An account that already exists on the site keeps its own
+-- password unless it is already an admin, so this can't take over a backer's account.
+create function public.admin_set_login(p_email text, p_password text)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_email text := lower(trim(p_email));
+  v_uid uuid;
+  v_was_admin boolean;
+  v_result text;
+begin
+  if not public.is_admin() then
+    raise exception 'not an admin' using errcode = '42501';
+  end if;
+  if v_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' then
+    raise exception 'That doesn''t look like an email address' using errcode = '22023';
+  end if;
+  if p_password is null or char_length(p_password) < 6 then
+    raise exception 'Passwords need at least 6 characters' using errcode = '22023';
+  end if;
+
+  select exists (select 1 from public.admins a where a.email = v_email) into v_was_admin;
+  select u.id into v_uid from auth.users u where lower(u.email) = v_email;
+
+  if v_uid is null then
+    v_uid := gen_random_uuid();
+    insert into auth.users (
+      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+      confirmation_token, recovery_token, email_change_token_new, email_change,
+      email_change_token_current, phone_change, phone_change_token, reauthentication_token
+    ) values (
+      '00000000-0000-0000-0000-000000000000', v_uid, 'authenticated', 'authenticated', v_email,
+      extensions.crypt(p_password, extensions.gen_salt('bf')), now(),
+      '{"provider":"email","providers":["email"]}'::jsonb,
+      jsonb_build_object('display_name', split_part(v_email, '@', 1)), now(), now(),
+      '', '', '', '', '', '', '', ''
+    );
+    insert into auth.identities (provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+    values (v_uid::text, v_uid,
+            jsonb_build_object('sub', v_uid::text, 'email', v_email, 'email_verified', true),
+            'email', now(), now(), now());
+    v_result := 'created';
+  elsif v_was_admin then
+    update auth.users
+       set encrypted_password = extensions.crypt(p_password, extensions.gen_salt('bf')),
+           email_confirmed_at = coalesce(email_confirmed_at, now()),
+           updated_at = now()
+     where id = v_uid;
+    v_result := 'password_set';
+  else
+    v_result := 'existing_account';
+  end if;
+
+  insert into public.admins (email, added_by)
+  values (v_email, (select u.email from auth.users u where u.id = (select auth.uid())))
+  on conflict (email) do nothing;
+
+  return v_result;
+end;
+$$;
+revoke all on function public.admin_set_login(text, text) from public, anon;
+grant execute on function public.admin_set_login(text, text) to authenticated;
+
+-- The team list, with whether each person can actually sign in yet.
+create function public.admin_team()
+returns table (email text, added_by text, created_at timestamptz, can_sign_in boolean, last_sign_in_at timestamptz)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select a.email, a.added_by, a.created_at,
+         (u.id is not null and u.email_confirmed_at is not null),
+         u.last_sign_in_at
+  from public.admins a
+  left join auth.users u on lower(u.email) = a.email
+  where public.is_admin()
+  order by a.created_at;
+$$;
+revoke all on function public.admin_team() from public, anon;
+grant execute on function public.admin_team() to authenticated;

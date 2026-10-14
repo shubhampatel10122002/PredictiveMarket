@@ -221,8 +221,14 @@ How it fits together:
   caps a single file at 50 MB, which is plenty for a minute of 720p vertical video.
 - Access is the `admins` table, checked by the database on every write through
   `is_admin()`, so the hidden URL is not the lock. A leaked link opens a sign-in
-  screen, and a signed-in stranger still cannot change anything. Admins sign in
-  with an ordinary site account on a confirmed email; add people under Team.
+  screen, and a signed-in stranger still cannot change anything.
+- Logins involve no email at all. On Team, adding an email with a password
+  creates a login that works at once, and any admin can set a new password for
+  any other admin, which is how a forgotten password is fixed. An email that
+  already has its own site account just gets access and keeps its password, so
+  a backer's account can't be taken over from there. `admin_set_login()` and
+  `admin_team()` in the database do this. Supabase's own reset emails aren't used:
+  its built-in mailer only reaches the Supabase project's own team members.
 - `/#case=<id>` on the site opens a case directly, which is what "View on site" uses.
 
 ## Run locally

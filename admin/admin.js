@@ -155,7 +155,7 @@ function renderGate(msg){
       <div class="err" id="err">${esc(msg || "")}</div>
       <button class="btn primary" type="submit">Sign in</button>
     </form>
-    <p class="hint">Forgot it? <button class="link" id="forgot">Email me a reset link</button></p>`);
+    <p class="hint">Forgot your password? Any other admin can set a new one for you on the Team page.</p>`);
   $("#em").focus();
   $("#signin").addEventListener("submit", async e => {
     e.preventDefault();
@@ -163,13 +163,6 @@ function renderGate(msg){
     const {error} = await sb.auth.signInWithPassword({email:$("#em").value.trim(), password:$("#pw").value});
     b.disabled = false;
     if(error) $("#err").textContent = /invalid/i.test(error.message) ? "That email and password don't match." : error.message;
-  });
-  $("#forgot").addEventListener("click", async () => {
-    const email = $("#em").value.trim();
-    if(!email) { $("#err").textContent = "Type your email first."; $("#em").focus(); return; }
-    const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo: location.origin + "/admin/"});
-    $("#err").textContent = error ? error.message : "";
-    if(!error) toast("Check your email for the reset link");
   });
 }
 
@@ -1077,31 +1070,60 @@ const commentLi = (r, del) => `<div class="li"><span class="av">${esc((r.name ||
   <div class="grow"><div class="who"><b>${esc(r.name)}</b>${r.is_backer ? '<i class="tag">Backer</i>' : ""}<small>${when(r.created_at)} · ${esc(caseTitle(r.case_id))}</small></div>
   <p>${esc(r.body)}</p></div>${del ? `<button class="ib del" data-delc="${r.id}" aria-label="Delete comment">${I.trash}</button>` : ""}</div>`;
 
-/* ============ team ============ */
+/* ============ team ============
+   No email is involved anywhere here. Adding someone creates their login with
+   the password you type, ready at once; you tell them the password. Any admin
+   can set a new password for any other admin, which is what "forgot my
+   password" means here. An email that already has its own account on the site
+   just gets access and keeps its own password, so a backer's account can't be
+   taken over from this page. admin_set_login() in the database does all of it. */
 async function pageTeam(){
   const m = shell("team");
-  m.innerHTML = `<div class="a-inner">${head("Team", "Who can open the admin. Every change is checked against this list by the database itself, so a leaked link is a sign-in screen and nothing more.")}
-    <div class="card" style="max-width:640px"><form id="addA" class="row"><input class="inp grow" id="ae" type="email" placeholder="name@example.com" required>
+  m.innerHTML = `<div class="a-inner">${head("Team", "Who can open the admin. Add someone with an email and a password and they can sign in straight away. No email is sent, so tell them the password yourself.")}
+    <div class="card" style="max-width:720px"><form id="addA" class="team-add" autocomplete="off">
+      <input class="inp" id="ae" type="email" placeholder="name@example.com" aria-label="Email" required>
+      <input class="inp" id="ap" type="text" placeholder="Password, 6+ characters" aria-label="Password" minlength="6" required spellcheck="false">
       <button class="btn primary" type="submit">${I.plus}Add admin</button></form>
-      <p class="note">They sign in here with a LaunchJustice account on that email, created on the site. Its email has to be confirmed.</p></div>
-    <div id="al" class="list2" style="max-width:640px;margin-top:14px"><div class="loading"><span class="spin"></span></div></div></div>`;
+      <p class="note">If the email already has an account on the site, they get access and keep the password they already use.</p></div>
+    <div id="al" class="list2" style="max-width:720px;margin-top:14px"><div class="loading"><span class="spin"></span></div></div></div>`;
   $("#addA").onsubmit = async e => {
     e.preventDefault();
-    const email = $("#ae").value.trim().toLowerCase(); if(!email.includes("@")) return;
-    const {error} = await sb.from("admins").insert({email, added_by:S.session.user.email});
-    if(error) return toast(error.code === "23505" ? "Already an admin" : error.message);
-    toast("Added " + email); pageTeam();
+    const email = $("#ae").value.trim().toLowerCase();
+    const b = e.target.querySelector("button"); b.disabled = true;
+    const {data, error} = await sb.rpc("admin_set_login", {p_email:email, p_password:$("#ap").value});
+    b.disabled = false;
+    if(error) return toast(error.message, 4000);
+    toast({created:`${email} can sign in now with that password`,
+           password_set:`${email} is an admin, and that's their password now`,
+           existing_account:`${email} already had an account, so they sign in with their own password`}[data] || "Added", 5000);
+    pageTeam();
   };
-  const {data, error} = await sb.from("admins").select("*").order("created_at");
+  const {data, error} = await sb.rpc("admin_team");
   if(!$("#al")) return;
   if(error) return $("#al").innerHTML = `<div class="empty">${esc(error.message)}</div>`;
   const me = (S.session.user.email || "").toLowerCase();
-  $("#al").innerHTML = data.map(a => `<div class="li"><span class="av">${esc(a.email.charAt(0).toUpperCase())}</span>
-    <div class="grow"><div class="who"><b>${esc(a.email)}</b>${a.email === me ? '<i class="tag team">You</i>' : ""}</div>
-    <p class="muted" style="font-size:13px">Added ${when(a.created_at)}${a.added_by && a.added_by !== "setup" ? " by " + esc(a.added_by) : ""}</p></div>
-    ${a.email === me ? "" : `<button class="btn danger sm" data-rma="${esc(a.email)}">Remove</button>`}</div>`).join("");
+  $("#al").innerHTML = data.map(a => `<div class="li" data-row="${esc(a.email)}"><span class="av">${esc(a.email.charAt(0).toUpperCase())}</span>
+    <div class="grow"><div class="who"><b>${esc(a.email)}</b>${a.email === me ? '<i class="tag team">You</i>' : ""}
+      ${a.can_sign_in ? "" : '<span class="pill hidden"><i></i>No login yet</span>'}</div>
+      <p class="muted" style="font-size:13px">${a.can_sign_in ? (a.last_sign_in_at ? "Last signed in " + when(a.last_sign_in_at) : "Hasn't signed in yet")
+        : "Create a login to let them in"} · added ${when(a.created_at)}${a.added_by && a.added_by !== "setup" ? " by " + esc(a.added_by) : ""}</p>
+      <form class="team-pw" hidden><input class="inp" type="text" placeholder="New password, 6+ characters" minlength="6" required spellcheck="false" aria-label="New password">
+        <button class="btn dark sm" type="submit">Save</button><button class="btn line sm" type="button" data-cancel>Cancel</button></form></div>
+    <div class="row" style="flex:none"><button class="btn line sm" data-pw>${a.can_sign_in ? "Set password" : "Create login"}</button>
+      ${a.email === me ? "" : `<button class="btn danger sm" data-rma="${esc(a.email)}">Remove</button>`}</div></div>`).join("");
+  $$("[data-row]").forEach(row => {
+    const email = row.dataset.row, f = $(".team-pw", row);
+    $("[data-pw]", row).onclick = () => { f.hidden = false; $("input", f).focus(); };
+    $("[data-cancel]", row).onclick = () => { f.hidden = true; };
+    f.onsubmit = async e => {
+      e.preventDefault();
+      const {error} = await sb.rpc("admin_set_login", {p_email:email, p_password:$("input", f).value});
+      if(error) return toast(error.message, 4000);
+      toast(`Saved. ${email} signs in with the new password.`, 4000); pageTeam();
+    };
+  });
   $$("[data-rma]").forEach(b => b.onclick = async () => {
-    if(!confirm(`Remove ${b.dataset.rma} from the admin?`)) return;
+    if(!confirm(`Remove ${b.dataset.rma} from the admin? Their account stays; they just lose access here.`)) return;
     const {error} = await sb.from("admins").delete().eq("email", b.dataset.rma);
     if(error) return toast(error.message);
     toast("Removed"); pageTeam();

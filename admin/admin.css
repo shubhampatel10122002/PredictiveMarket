@@ -306,3 +306,9 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .spin{width:18px;height:18px;border-radius:50%;border:2.5px solid var(--line);border-top-color:var(--ink);animation:spin .8s linear infinite;display:inline-block;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading{padding:60px 0;text-align:center;color:var(--muted)}
+
+/* team: add someone, or set a password, in one line */
+.team-add{display:grid;grid-template-columns:1fr 1fr auto;gap:10px}
+.team-pw{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.team-pw .inp{flex:1;min-width:180px;padding:8px 11px}
+@media (max-width:699.98px){.team-add{grid-template-columns:1fr}.li{flex-wrap:wrap}}
