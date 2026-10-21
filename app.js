@@ -109,6 +109,28 @@ const myActors = () => signedIn() ? [actorId(), deviceId] : [deviceId];
 const myAvatar = () => (signedIn() && auth.profile) ? (auth.profile.avatar_url||null) : null;
 const myEmail  = () => signedIn() ? (auth.session.user.email||"") : "";
 
+/* ============ analytics ============
+   What is recorded, and when, is decided in this file; track.js only queues
+   and sends. A row takes actorId() as it is made, so signing in halfway
+   through splits the record where the person really changed. */
+if(window.LJ_TRACK) LJ_TRACK.setActor(actorId);
+const track = (kind, caseId, f) => { if(window.LJ_TRACK) LJ_TRACK.event(kind, {...f, case_id:caseId}); };
+
+/* Time on screen. A stopwatch runs only while it is wanted AND the tab is
+   visible, so a case left open in a background tab, or a clip still going
+   behind another app, does not run up minutes nobody spent on it. */
+const stopwatches = new Set();   /* the wanted ones, for visibilitychange */
+class Stopwatch{
+  constructor(){ this.ms=0; this.at=null; this.on=false; }
+  set(on){ this.on=on; on ? stopwatches.add(this) : stopwatches.delete(this); this.sync(); return this; }
+  sync(){ const now=performance.now();
+    if(this.at!==null) this.ms+=now-this.at;
+    this.at = this.on && !document.hidden ? now : null; }
+  /* seconds counted so far, starting again from nothing */
+  take(){ this.sync(); const s=this.ms/1000; this.ms=0; return s; }
+}
+document.addEventListener("visibilitychange", ()=>stopwatches.forEach(w=>w.sync()));
+
 /* ============ data layer ============
    Shared mode: Supabase, when SUPABASE_URL and SUPABASE_ANON_KEY are set in
    config.js. Local mode: saved in this browser only, and accounts are off. */
@@ -287,6 +309,7 @@ function refresh(){
 class Clip{
   constructor(root, src){ this.root=root; this.src=src; this.beats=src.beats||[]; this.span=BEAT_MS*Math.max(1,this.beats.length);
     this.t=0; this.beat=-1; this.playing=false; this.userPaused=false; this.last=performance.now();
+    this.sw=null;   /* the stopwatch of the viewing this clip is in, set by its feed; it runs when the clip does */
     this.p=root.querySelector(".caption p"); this.segs=[...root.querySelectorAll(".seg i")];
     this.stage=root.querySelector(".stage"); this.video=root.querySelector("video");
     this.embed=!!root.querySelector("iframe");
@@ -319,8 +342,10 @@ class Clip{
   show(i){ if(!this.p || i===this.beat) return; this.beat=i; this.p.classList.remove("lit","enter"); this.p.firstChild.textContent=this.beats[i];
     void this.p.offsetWidth; this.p.classList.add("enter"); requestAnimationFrame(()=>requestAnimationFrame(()=>this.p.classList.add("lit"))); }
   play(){ if(this.embed || this.userPaused) return; this.playing=true; this.stage.classList.remove("paused"); this.last=performance.now();
+    if(this.sw) this.sw.set(true);
     if(this.video) this.video.play().catch(()=>{}); }
-  pause(){ if(this.embed) return; this.playing=false; this.stage.classList.add("paused"); if(this.video) this.video.pause(); }
+  pause(){ if(this.embed) return; this.playing=false; this.stage.classList.add("paused"); if(this.video) this.video.pause();
+    if(this.sw) this.sw.set(false); }
   tick(now){ if(!this.playing) return;
     if(this.video && this.video.duration) this.t=this.video.currentTime/this.video.duration*this.span;
     else this.t=(this.t+(now-this.last))%this.span;
@@ -416,6 +441,17 @@ function firstGesture(){
 /* an item is a case plus which of its clips: -1 is the case's own hero clip */
 const clipItem = (c, k) => ({c, k, key:c.id+":"+k, src: k<0 ? caseClip(c) : shortClip(c, k)});
 const caseItems = c => [clipItem(c,-1), ...c.clips.map((_,k)=>clipItem(c,k))];
+/* what a reel is called in the events table: "hero" for a case's own clip */
+const clipKey = it => it.k < 0 ? "hero" : String(it.c.clips[it.k].id || it.k);
+/* how long a reel runs, for clip_watch's pct: the file's own length when it
+   has one, then the length the clip declares, then its beats */
+function reelSecs(it, clip){
+  const d = clip && clip.video ? clip.video.duration : NaN;
+  if(Number.isFinite(d) && d > 0) return d;
+  if(+it.src.secs > 0) return +it.src.secs;
+  const n = (it.src.beats||[]).length;
+  return n ? n*BEAT_MS/1000 : 60;
+}
 /* Every clip on the platform. Filmed footage opens the feed, in order, because
    people speaking is what someone arriving should meet first; the story-style
    clips follow. Behind the footage the rest is dealt round by round, so two
@@ -493,6 +529,7 @@ class ClipFeed{
     this.byKey = Object.fromEntries(items.map(it=>[it.key, it]));
     this.timers = new Map();      /* key -> Clip, for the ones we clock ourselves */
     this.active = null; this.wanted = false;
+    this.view = null;       /* the viewing in progress, for clip_watch */
     this.sound = true;      /* on by default; the browser needs a gesture first */
     this.yt = null; this.ytEl = null;
     root.innerHTML = items.map(it=>reelHTML(it, mode)).join("")
@@ -501,17 +538,18 @@ class ClipFeed{
           <button data-step="1" aria-label="Next clip">${icons.down}</button></div>` : "");
 
     root.querySelectorAll(".reel").forEach(el=>{
-      const it = this.byKey[el.dataset.key], c = it.c;
+      const it = this.byKey[el.dataset.key], c = it.c, ck = clipKey(it);
       if(!el.dataset.embed){
         const clip = new Clip(el, it.src);
         this.timers.set(el.dataset.key, clip); clips.add(clip);
       }
+      /* everything opened from a reel says which feed and which clip it came from */
       el.querySelectorAll("[data-act]").forEach(b=>b.addEventListener("click",()=>{
         const a = b.dataset.act;
-        if(a==="pledge"){ if(mode==="player") closePlayer(); openPledge(c.id); }
-        if(a==="discuss"){ if(mode==="player") closePlayer(); openCase(c.id, "s-talk"); }
-        if(a==="details"){ if(mode==="player") closePlayer(); openCase(c.id); }
-        if(a==="share") shareCase(c);
+        if(a==="pledge"){ if(mode==="player") closePlayer(); openPledge(c.id, null, mode, ck); }
+        if(a==="discuss"){ if(mode==="player") closePlayer(); openCase(c.id, "s-talk", mode, ck); }
+        if(a==="details"){ if(mode==="player") closePlayer(); openCase(c.id, null, mode, ck); }
+        if(a==="share") shareCase(c, mode, ck);
       }));
       const snd = el.querySelector("[data-sound]");
       if(snd) snd.addEventListener("click",e=>{ e.stopPropagation(); this.setSound(!this.sound); });
@@ -557,13 +595,42 @@ class ClipFeed{
   togglePlay(el){
     const yt = this.yt;
     if(!yt || this.ytEl !== el || !yt.getPlayerState) return;
-    try{ yt.getPlayerState() === 1 ? yt.pauseVideo() : yt.playVideo(); }catch(e){}
+    try{
+      const on = yt.getPlayerState() !== 1;
+      on ? yt.playVideo() : yt.pauseVideo();
+      if(this.view && this.view.el === el) this.view.sw.set(on);   /* a tap that pauses it pauses its viewing */
+    }catch(e){}
+  }
+  /* One viewing of one reel, for clip_watch. It opens when a reel is entered
+     and is written when the reel is left, which covers scrolling on, the feed
+     pausing for another view or a sheet, the player closing and the feed being
+     torn down. Only time the clip is running counts: a Clip runs the stopwatch
+     itself as it plays and pauses, and an embed, which has no clock we can
+     read, runs it for as long as it is mounted. */
+  watching(el){
+    if(this.view && this.view.el === el) return this.view;
+    this.endView();
+    const v = this.view = {el, it:this.byKey[el.dataset.key], sw:new Stopwatch()};
+    if(el.dataset.embed) v.sw.set(true);
+    return v;
+  }
+  /* `keep` writes the time so far and leaves the viewing open: the page is
+     going, but may yet come back from the back-forward cache */
+  endView(keep){
+    const v = this.view; if(!v) return;
+    const clip = this.timers.get(v.el.dataset.key), s = v.sw.take();
+    if(s >= 1) track("clip_watch", v.it.c.id, {clip:clipKey(v.it), via:this.mode, seconds:s,
+                                                pct:Math.min(1, s/reelSecs(v.it, clip))});
+    if(keep) return;
+    v.sw.set(false); this.view = null;
+    if(clip && clip.sw === v.sw) clip.sw = null;
   }
   enter(el){
     if(!el || el !== this.active || !this.wanted) return;
     /* whatever else happened, exactly one embedded player is ever alive: a
        scroll that outruns the observer must not leave one playing behind it */
     this.root.querySelectorAll(".reel").forEach(r=>{ if(r !== el && r.dataset.embed) this.dropEmbed(r); });
+    const view = this.watching(el);
     if(el.dataset.embed){
       const slot = el.querySelector(".slot");
       if(!slot || slot.firstElementChild && slot.querySelector(".yt-host, iframe")) return;
@@ -602,7 +669,7 @@ class ClipFeed{
       });
       return;
     }
-    const clip = this.timers.get(el.dataset.key); if(clip) clip.play();
+    const clip = this.timers.get(el.dataset.key); if(clip){ clip.sw = view.sw; clip.play(); }
   }
   dropEmbed(el){
     if(this.ytEl === el){
@@ -614,8 +681,9 @@ class ClipFeed{
   }
   leave(el){
     if(!el) return;
-    if(el.dataset.embed){ this.dropEmbed(el); return; }
-    const clip = this.timers.get(el.dataset.key); if(clip) clip.pause();
+    if(el.dataset.embed) this.dropEmbed(el);
+    else { const clip = this.timers.get(el.dataset.key); if(clip) clip.pause(); }
+    if(this.view && this.view.el === el) this.endView();
   }
   play(){ this.wanted = true;
     if(!this.active) this.active = this.root.querySelector(".reel");
@@ -662,6 +730,7 @@ function openPlayer(c, k){
   player = new ClipFeed($("#playerFeed"), caseItems(c), "player");
   player.jumpTo(c.id+":"+(k===undefined?-1:k));
   player.play();
+  syncVisit();
   refresh();
   const close = $("#playerClose");
   close.onclick = closePlayer;
@@ -671,11 +740,13 @@ function closePlayer(){
   if(player){ player.destroy(); player = null; }
   $("#player").classList.remove("on");
   $("#playerFeed").innerHTML = "";
+  syncVisit();
   if(current === "watch" && !sheetOpen) feedPlay(true);
 }
 const playerOpen = () => !!player;
 
-async function shareCase(c){
+async function shareCase(c, via, clip){
+  track("share", c.id, {via: via || "other", clip});
   const text = `${c.head} — back this case on LaunchJustice`;
   try{ await navigator.clipboard.writeText(text); toast("Case copied to share"); }
   catch(e){ toast("Sharing links arrive in a later version"); }
@@ -717,7 +788,7 @@ function renderTrendRow(){
         <span class="tcard-why">${TREND_ICON[c.trending.kind]||icons.flame}${esc(c.trending.reason)}</span>
         <span class="tcard-foot">${scoreTiny(c,30)}<span class="tcard-fund"><b data-raised-s="${c.id}"></b> of ${usdShort(c.goal)}</span></span>
       </button>`).join("")}</div>`;
-  el.querySelectorAll(".tcard").forEach(b=>b.addEventListener("click",()=>openCase(b.dataset.id)));
+  el.querySelectorAll(".tcard").forEach(b=>b.addEventListener("click",()=>openCase(b.dataset.id, null, "trending")));
 }
 
 function renderCaseList(){
@@ -743,7 +814,7 @@ function renderCaseList(){
         </span>
       </span>
     </button>`;}).join("") : `<div class="empty">No cases match that search. Try another issue or clear the filter.</div>`;
-  el.querySelectorAll(".case").forEach(b=>b.addEventListener("click",()=>openCase(b.dataset.id)));
+  el.querySelectorAll(".case").forEach(b=>b.addEventListener("click",()=>openCase(b.dataset.id, null, "cases")));
   refresh();
 }
 
@@ -985,10 +1056,31 @@ function detailHTML(c){
   </section>`;
 }
 
+/* One visit to one case page, for case_time. Its clock runs while the case,
+   or its score breakdown, is the screen in front of the person: not while
+   the clip player covers it, and not while the tab is hidden. It is written
+   once, as the visit ends. */
+let visit = null;
+const syncVisit = () => { if(visit) visit.sw.set(!player); };
+function startVisit(id){ visit = {id, sw:new Stopwatch()}; syncVisit(); }
+/* `keep` writes the time so far and leaves the visit open, for a page that
+   is going but may yet come back from the back-forward cache */
+function endVisit(keep){
+  if(!visit) return;
+  const s = visit.sw.take();
+  if(s >= 1) track("case_time", visit.id, {seconds: Math.min(3600, s)});
+  if(!keep){ visit.sw.set(false); visit = null; }
+}
+
 let detailClip=null, tickT=null, secObs=null, heroScroll=null, fanAmount=100;
-function openCase(id, jumpTo){
+/* `via` and `clip` say where the case was opened from, for case_view */
+function openCase(id, jumpTo, via, clip){
   const c = byId[id], v = $("#v-case");
-  teardownCase();
+  /* drawing the case that is already open again, after a rating say, is the
+     same visit: no second view, and its clock keeps running */
+  const again = !!visit && visit.id === id;
+  teardownCase(again);
+  if(!again){ startVisit(id); track("case_view", id, {via: via || "other", clip}); }
   fanAmount = 100;
 
   v.innerHTML = heroHTML(c) + `
@@ -1021,7 +1113,7 @@ function openCase(id, jumpTo){
   if(!REDUCED) v.addEventListener("scroll", heroScroll, {passive:true});
 
   v.querySelector("#backBtn").addEventListener("click",()=>go(prevView||"cases"));
-  v.querySelectorAll(".fund-cta").forEach(b=>b.addEventListener("click",()=>openPledge(c.id)));
+  v.querySelectorAll(".fund-cta").forEach(b=>b.addEventListener("click",()=>openPledge(c.id, null, "case")));
   v.querySelectorAll("[data-score]").forEach(b=>b.addEventListener("click",()=>openScore(c.id, b.dataset.score)));
   v.querySelectorAll("[data-vetted]").forEach(b=>b.addEventListener("click",()=>openVetting(c)));
   v.querySelectorAll("[data-clip]").forEach(b=>b.addEventListener("click",()=>
@@ -1056,7 +1148,7 @@ function openCase(id, jumpTo){
   startTicker(v);
   wireSecNav(v);
   armReveals(v);
-  $("#ctaBtn").onclick = ()=>openPledge(c.id);
+  $("#ctaBtn").onclick = ()=>openPledge(c.id, null, "case");
   v.scrollTop = 0;
   go("case");
   refresh();
@@ -1091,7 +1183,8 @@ function armStickyCta(v){
   ctaObs.observe(anchor);
 }
 
-function teardownCase(){
+function teardownCase(keepVisit){
+  if(!keepVisit) endVisit();
   if(ctaObs){ ctaObs.disconnect(); ctaObs=null; }
   $("#cta").classList.remove("show");
   if(detailClip){ clips.delete(detailClip); detailClip=null; }
@@ -1396,8 +1489,11 @@ function outcomeStrip(c, amt){
       <span class="os-l">${l}</span><span class="os-p">${Math.round(p*100)}%</span>
       <b class="os-v">${v?"$"+num(v):"$0"}</b><span class="os-g">${g?`+${g}%`:""}</span></div>`).join("")}</div>`;
 }
-function openPledge(id, prefill){
+function openPledge(id, prefill, via, clip){
   const c = byId[id];
+  /* the sheet put back as it was, on the way back from the split, is the
+     same look at investing, not a new one */
+  if(!prefill) track("invest_open", id, {via: via || "other", clip});
   const was = prefill || {};
   const PRESETS = [25,50,100,250];
   let amt = was.amt > 0 ? was.amt : 100;
@@ -1465,7 +1561,7 @@ function pledgeDone(c, amt){
     </div>
     <button class="btn primary" id="dDisc">Join the discussion</button>
     <button class="btn ghost" id="dClose" style="width:100%;margin-top:8px">Keep watching</button></div>`;
-  $("#dDisc").onclick=()=>{ closeSheet(); openCase(c.id, "s-talk"); };
+  $("#dDisc").onclick=()=>{ closeSheet(); openCase(c.id, "s-talk", "other"); };
   $("#dClose").onclick=()=>{ closeSheet(); };
   $("#dDisc").focus();
 }
@@ -1673,7 +1769,7 @@ function renderMine(){
         <div class="prow-r"><b>${usd(p.amount)}</b><small>$${num(o.win)} if won</small></div></button>`; }).join("")
     : `<div class="empty">You haven't invested yet. Watch a few clips and back a case you believe in.<br><br><button class="btn primary" style="width:auto" id="goWatch">Watch cases</button></div>`}
   </div>`;
-  v.querySelectorAll(".prow").forEach(b=>b.addEventListener("click",()=>openCase(b.dataset.id)));
+  v.querySelectorAll(".prow").forEach(b=>b.addEventListener("click",()=>openCase(b.dataset.id, null, "mine")));
   const gw=v.querySelector("#goWatch"); gw && gw.addEventListener("click",()=>go("watch"));
   v.querySelectorAll(".live").forEach(el=>{ el.classList.toggle("on",store.live); el.lastChild.textContent = store.live?"Shared with all backers":"Saved on this device only"; });
   renderAccount();
@@ -1708,4 +1804,15 @@ initDb();
 /* /#case=<id> opens straight onto a case, which is how the admin's
    "View on site" lands on the one you were editing */
 const linkedCase = (location.hash.match(/^#case=([\w-]+)/) || [])[1];
-if(linkedCase && byId[linkedCase]){ history.replaceState(null, "", location.pathname); openCase(linkedCase); }
+if(linkedCase && byId[linkedCase]){ history.replaceState(null, "", location.pathname); openCase(linkedCase, null, "link"); }
+
+/* The page is going: write the open case visit and clip viewing now and
+   send them. track.js has already flushed whatever was queued, since it was
+   listening first, so this is a second small request, kept alive like the
+   first. Both stay open, because a page restored from the back-forward cache
+   carries on where it was rather than starting a visit nobody began. */
+addEventListener("pagehide", ()=>{
+  endVisit(true);
+  [watchFeed, player].forEach(f=>{ if(f) f.endView(true); });
+  if(window.LJ_TRACK) LJ_TRACK.flush();
+});

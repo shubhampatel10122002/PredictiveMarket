@@ -231,6 +231,30 @@ How it fits together:
   its built-in mailer only reaches the Supabase project's own team members.
 - `/#case=<id>` on the site opens a case directly, which is what "View on site" uses.
 
+## Analytics tracking
+
+The site records what people open, watch and back in the `events` table, so
+the admin can show which cases and clips are actually holding attention.
+`track.js` queues rows and sends them in batches: every four seconds while
+there is something to send, and again when the tab is hidden or the page
+closes, using `keepalive` so the last batch outlives the page. `app.js`
+decides when each row is written. With no Supabase in `config.js`, nothing is
+recorded and nothing breaks.
+
+| Kind | Written when | Fields |
+| --- | --- | --- |
+| `case_view` | a case page is opened by a person. Redrawing the case already open, after a rating or back from the score breakdown, is not a view | `via`: `cases`, `trending`, `watch`, `player`, `mine`, `link` or `other`; `clip` when opened from a reel |
+| `case_time` | the person leaves that case: another case, another tab, or the page closing. Counts only while the case or its score breakdown is on screen and the browser tab is visible, never under the clip player. Under a second is dropped; capped at an hour | `seconds` |
+| `clip_watch` | a reel stops being the one on screen: scrolled past, the feed paused for another tab or a sheet, the player closed, or the page closing. Counts only while the clip is playing, so not after a tap to pause and not in a hidden tab. An embedded player has no clock to read, so it counts while it is mounted. Under a second is dropped | `clip`, `via` (`watch` or `player`), `seconds`, and `pct`: seconds over the clip's length, capped at 1 even when it loops |
+| `invest_open` | the invest sheet is opened. Coming back to it from "how the split works" is not a new one | `via`: `case`, `watch`, `player` or `other`; `clip` from a reel |
+| `share` | the share button on a reel is used | `via`, `clip` |
+
+`clip` is `hero` for a case's own 60-second clip, otherwise the clip's `id`.
+Every row carries the same `actor_id` as pledges and comments, `d:<random>`
+for a browser and `u:<uuid>` for an account, and nothing else about the
+person. The browser can only insert into `events`: no reads, edits or
+deletes, and only the publishable key is sent.
+
 ## Run locally
 
 Open `index.html` in a browser, or run `npx serve .` and visit the printed URL.
