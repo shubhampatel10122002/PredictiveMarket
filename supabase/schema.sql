@@ -460,6 +460,11 @@ revoke all on public.events from anon, authenticated;
 grant insert (kind, case_id, clip, via, seconds, pct, actor_id) on public.events to anon, authenticated;
 
 -- Everything the analytics page needs, aggregated by UTC day. Null for non-admins.
+-- Activity by the team's own signed-in accounts is left out, so checking the
+-- site doesn't show up as visitors. Pledges and comments come back as daily
+-- totals plus the latest few, so no API row cap can cut the history short.
+-- pct is a 4-byte real, so its thresholds are compared as reals: a stored
+-- 0.9 is 0.8999999762, which a plain .9 would miss.
 create function public.admin_analytics()
 returns jsonb
 language sql
@@ -467,44 +472,70 @@ stable
 security definer
 set search_path = ''
 as $$
+  with staff as (
+    select 'u:' || u.id::text as actor
+    from auth.users u join public.admins a on a.email = lower(u.email)
+  ), ev as (
+    select e.* from public.events e
+    where not exists (select 1 from staff s where s.actor = e.actor_id)
+  )
   select case when not public.is_admin() then null else jsonb_build_object(
     'daily', coalesce((select jsonb_agg(x) from (
         select to_char(e.at at time zone 'utc', 'YYYY-MM-DD') as d, e.case_id, e.kind,
                count(*) as n, count(distinct e.actor_id) as actors,
                coalesce(sum(e.seconds), 0) as secs
-        from public.events e
+        from ev e
         group by 1, 2, 3) x), '[]'::jsonb),
     'clips', coalesce((select jsonb_agg(x) from (
         select to_char(e.at at time zone 'utc', 'YYYY-MM-DD') as d, e.case_id, e.clip,
                count(*) as plays, count(distinct e.actor_id) as viewers,
                coalesce(sum(e.seconds), 0) as secs,
-               count(*) filter (where e.pct >= .9) as completes,
+               count(*) filter (where e.pct >= .9::real) as completes,
                jsonb_build_array(
-                 count(*) filter (where e.pct >= .1), count(*) filter (where e.pct >= .2),
-                 count(*) filter (where e.pct >= .3), count(*) filter (where e.pct >= .4),
-                 count(*) filter (where e.pct >= .5), count(*) filter (where e.pct >= .6),
-                 count(*) filter (where e.pct >= .7), count(*) filter (where e.pct >= .8),
-                 count(*) filter (where e.pct >= .9), count(*) filter (where e.pct >= .98)) as reach
-        from public.events e
+                 count(*) filter (where e.pct >= .1::real), count(*) filter (where e.pct >= .2::real),
+                 count(*) filter (where e.pct >= .3::real), count(*) filter (where e.pct >= .4::real),
+                 count(*) filter (where e.pct >= .5::real), count(*) filter (where e.pct >= .6::real),
+                 count(*) filter (where e.pct >= .7::real), count(*) filter (where e.pct >= .8::real),
+                 count(*) filter (where e.pct >= .9::real), count(*) filter (where e.pct >= .98::real)) as reach
+        from ev e
         where e.kind = 'clip_watch' and e.clip is not null and e.seconds >= 1
         group by 1, 2, 3) x), '[]'::jsonb),
     'attrib', coalesce((select jsonb_agg(x) from (
         select to_char(e.at at time zone 'utc', 'YYYY-MM-DD') as d, e.case_id, e.clip, e.kind, count(*) as n
-        from public.events e
+        from ev e
         where e.kind in ('case_view', 'invest_open') and e.clip is not null
         group by 1, 2, 3, 4) x), '[]'::jsonb),
     'via', coalesce((select jsonb_agg(x) from (
         select to_char(e.at at time zone 'utc', 'YYYY-MM-DD') as d, e.case_id,
                coalesce(e.via, 'other') as via, count(*) as n
-        from public.events e
+        from ev e
         where e.kind = 'case_view'
         group by 1, 2, 3) x), '[]'::jsonb),
+    'pledges', coalesce((select jsonb_agg(x) from (
+        select to_char(p.created_at at time zone 'utc', 'YYYY-MM-DD') as d, p.case_id,
+               count(*) as n, sum(p.amount) as amount
+        from public.pledges p
+        group by 1, 2) x), '[]'::jsonb),
+    'comments', coalesce((select jsonb_agg(x) from (
+        select to_char(c.created_at at time zone 'utc', 'YYYY-MM-DD') as d, c.case_id, count(*) as n
+        from public.comments c
+        group by 1, 2) x), '[]'::jsonb),
     'recent', coalesce((select jsonb_agg(x) from (
         select e.at, e.kind, e.case_id, e.clip, e.via, e.seconds, e.pct, e.actor_id
-        from public.events e
+        from ev e
         order by e.at desc
         limit 40) x), '[]'::jsonb),
-    'total', (select count(*) from public.events)
+    'recent_pledges', coalesce((select jsonb_agg(x) from (
+        select p.case_id, p.amount, p.display_name, p.actor_id, p.created_at
+        from public.pledges p
+        order by p.created_at desc
+        limit 40) x), '[]'::jsonb),
+    'recent_comments', coalesce((select jsonb_agg(x) from (
+        select c.case_id, c.name, c.actor_id, c.created_at
+        from public.comments c
+        order by c.created_at desc
+        limit 40) x), '[]'::jsonb),
+    'total', (select count(*) from ev)
   ) end;
 $$;
 revoke all on function public.admin_analytics() from public, anon;

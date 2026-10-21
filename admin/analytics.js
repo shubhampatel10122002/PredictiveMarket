@@ -47,7 +47,7 @@ const sum = (a, f = 0, t = a.length - 1) => { let s = 0; for(let i = Math.max(0,
 
 /* "up is good" decides the colour, the arrow is always the direction */
 function delta(cur, prev, upGood = true){
-  if(!AN.period) return "";
+  if(!AN.cmp) return "";
   if(!prev) return cur ? `<span class="dl new">new</span>` : "";
   const r = (cur - prev) / prev; if(Math.abs(r) < .005) return `<span class="dl flat">±0%</span>`;
   const good = (r > 0) === upGood;
@@ -60,13 +60,11 @@ const trendPill = t => { const [tone, ic, label] = TREND[t] || TREND.steady; ret
 /* ---------- data ---------- */
 async function loadAnalytics(force){
   if(AN.data && !force) return AN.data;
-  const [a, p, c] = await Promise.all([
-    sb.rpc("admin_analytics"),
-    sb.rpc("admin_pledges"),
-    sb.from("comments").select("case_id, created_at, name").order("created_at", {ascending: false}).limit(5000)
-  ]);
+  /* one call: events, pledges and comments come back as daily totals, so
+     the API's row cap can never cut the history short */
+  const a = await sb.rpc("admin_analytics");
   if(a.error) throw a.error;
-  AN.data = {real: a.data || null, pledges: p.data || [], comments: c.data || []};
+  AN.data = {real: a.data || null};
   AN.loadedAt = Date.now();
   return AN.data;
 }
@@ -74,8 +72,9 @@ function anModel(){
   const live = entries().filter(e => e.live);
   const listed = {};
   live.forEach(e => { if(e.row && !e.demo) listed[e.id] = e.row.created_at; });
-  return LJ_ANALYTICS.build({cases: live.map(e => e.c), listed, demo: AN.demo, cats: CATS,
-    real: AN.data.real, pledges: AN.data.pledges, comments: AN.data.comments});
+  const r = AN.data.real || {};
+  return LJ_ANALYTICS.build({cases: live.map(e => e.c), listed, demo: AN.demo, cats: CATS, real: AN.data.real,
+    pledges: r.pledges || [], comments: r.comments || [], recentPledges: r.recent_pledges || [], recentComments: r.recent_comments || []});
 }
 function anRange(model){
   const to = model.days.length - 1;
@@ -95,6 +94,7 @@ async function pageAnalytics(caseId){
 function drawAnalytics(caseId){
   const m = $("#main"), model = anModel(), {from, to} = anRange(model);
   const sm = LJ_ANALYTICS.summarize(model, from, to);
+  AN.cmp = !!AN.period && from - (to - from + 1) >= 0;
   const one = caseId && sm.cases.find(x => x.id === caseId);
   if(caseId && !one){ m.innerHTML = `<div class="a-inner"><div class="empty-card"><b>No live case called “${esc(caseId)}”</b><a href="#/analytics">Back to analytics</a></div></div>`; return; }
   const y = window.scrollY;
@@ -123,7 +123,7 @@ function filters(model, one){
 
 /* ---------- overview ---------- */
 function overview(model, sm, from, to){
-  const P = sm.platform, per = sm.range.days, cmp = AN.period ? `vs previous ${per} days` : "";
+  const P = sm.platform, per = sm.range.days, cmp = AN.cmp ? `vs previous ${per} days` : "";
   const tile = (label, v, d, sub, spark, hl) => `<div class="tile an-tile${hl ? " hl" : ""}"><small>${label}</small><b>${v}</b>
     <span class="an-sub">${d}${d && sub ? " " : ""}${sub ? `<em>${sub}</em>` : ""}</span>${spark ? `<span class="an-spark">${sparkSvg(spark, hl, false, true)}</span>` : ""}</div>`;
   const insights = LJ_ANALYTICS.insights(sm);
@@ -240,10 +240,11 @@ function halfBars(sm){
 
 /* ---------- clips ---------- */
 function clipTable(clips){
+  clips = clips.filter(c => c.plays > 0);
   if(!clips.length) return `<div class="empty">No clip plays in this period.</div>`;
   return `<table class="tbl an-tbl"><thead><tr><th>Clip</th><th class="num">Plays</th><th class="num">Avg watched</th>
     <th class="num">Finish</th><th class="num">To case</th><th class="num">To invest</th><th class="num">Drop-off</th></tr></thead><tbody>
-    ${clips.slice(0, AN.allClips ? 80 : 10).map(c => { const k = c.caseId + ":" + c.key;
+    ${(AN.allClips ? clips : clips.slice(0, 10)).map(c => { const k = c.caseId + ":" + c.key;
       return `<tr data-clipsel="${esc(k)}" tabindex="0" aria-selected="${AN.clip === k}">
       <td><span class="an-case"><i style="background:${sColor(caseOf(c.caseId))}"></i><span>${esc(short(c.title, 40))}
         <small>${esc(short(c.caseTitle, 40))}${c.kind === "embed" ? " · embedded" : c.kind === "card" ? " · caption card" : ""}</small></span></span></td>
@@ -293,7 +294,7 @@ function caseView(model, sm, c, from, to){
     <span><b>${fUsd(c.raised)}</b> of ${fUsd(c.goal)} · ${fPct(c.fundedPct)} funded · ${fN(c.backers)} backers · ${c.daysLive} days live</span>
     ${trendPill(c.trend)}<span class="grow"></span>
     <a class="btn line sm" href="#/case/${encodeURIComponent(c.id)}">Edit case</a>
-    <a class="btn line sm" href="/#case=${encodeURIComponent(c.id)}" target="_blank" rel="noopener">${I.ext}View on site</a></div>
+    <a class="btn line sm" href="/#case=${encodeURIComponent(c.id)}&preview" target="_blank" rel="noopener">${I.ext}View on site</a></div>
   <div class="tiles an-tiles">
     ${tile("Invested", fUsd(t.amount), delta(t.amount, P.amount), `#${rank("a", x => x.totals.amount)} of ${sm.cases.length}`, true)}
     ${tile("Backers", fN(t.pledges), delta(t.pledges, P.pledges))}
@@ -376,7 +377,7 @@ function plotAll(model, sm, one, from, to){
 }
 
 function drawRet(model, one, from, to){
-  const clips = LJ_ANALYTICS.clipStats(model, one ? one.id : null, from, to);
+  const clips = LJ_ANALYTICS.clipStats(model, one ? one.id : null, from, to).filter(x => x.plays > 0 && x.retention);
   const c = clips.find(x => x.caseId + ":" + x.key === AN.clip) || clips[0];
   const card = $(`[data-card="ret"]`); if(!card) return;
   const p = card.querySelector("[data-plot]"), t = card.querySelector("[data-table]");
@@ -395,7 +396,8 @@ const halfAt = r => { for(let i = 1; i < r.length; i++) if(r[i] < .5) return (i 
 /* small helpers shared by every chart */
 /* a round step (1, 2, 2.5 or 5 a power of ten) that gives four or five
    gridlines, and the top of the axis as a whole number of those steps */
-function niceStep(v){ const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p;
+function niceStep(v){ if(!(v > 1)) return 1;   /* everything on these axes is whole dollars or whole people */
+  const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p;
   return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; }
 function niceMax(v){ if(!(v > 0)) return 1; const st = niceStep(v / 4); return Math.ceil(v / st - 1e-9) * st; }
 const ticks = max => { const st = niceStep(max / 4), out = []; for(let v = 0; v <= max + st / 1e6; v += st) out.push(v); return out; };
@@ -609,7 +611,7 @@ function funnelBars(steps){
   const html = `<div class="fn">${steps.map((s, i) => `<div class="fn-r"><span class="fn-l">${s.label}</span>
     <span class="fn-t"><i style="width:${Math.max(.5, s.n / top * 100).toFixed(2)}%"></i></span><b>${fN(s.n)}</b>
     ${i ? `<small>${fPct(steps[i - 1].n ? s.n / steps[i - 1].n : 0)} of the step before</small>` : `<small>&nbsp;</small>`}</div>`).join("")}</div>
-    <p class="an-cs">${steps[0] && steps[0].n ? `One investment for every ${fN(steps[0].n / Math.max(1, steps[steps.length - 1].n))} clip plays.` : ""}</p>`;
+    <p class="an-cs">${steps[0] && steps[0].n && steps[steps.length - 1].n ? `One investment for every ${fN(steps[0].n / steps[steps.length - 1].n)} clip plays.` : ""}</p>`;
   return [html, tbl(["Step", "People", "Of the step before"], steps.map((s, i) => [s.label, fN(s.n), i ? fPct(steps[i - 1].n ? s.n / steps[i - 1].n : 0) : "—"]))];
 }
 const SRC = [["watch", "Watch feed"], ["cases", "Case list"], ["trending", "Trending rail"], ["player", "Clip player"], ["link", "Shared links"], ["mine", "My investments"], ["other", "Other"]];

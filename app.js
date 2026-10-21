@@ -114,7 +114,8 @@ const myEmail  = () => signedIn() ? (auth.session.user.email||"") : "";
    and sends. A row takes actorId() as it is made, so signing in halfway
    through splits the record where the person really changed. */
 if(window.LJ_TRACK) LJ_TRACK.setActor(actorId);
-const track = (kind, caseId, f) => { if(window.LJ_TRACK) LJ_TRACK.event(kind, {...f, case_id:caseId}); };
+const noTrack = () => { try{ return sessionStorage.getItem("lj_notrack") === "1"; }catch(e){ return false; } };
+const track = (kind, caseId, f) => { if(window.LJ_TRACK && !noTrack()) LJ_TRACK.event(kind, {...f, case_id:caseId}); };
 
 /* Time on screen. A stopwatch runs only while it is wanted AND the tab is
    visible, so a case left open in a background tab, or a clip still going
@@ -1801,9 +1802,11 @@ $("#nav").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>g
 renderFeed(); renderCases(); go("cases"); refresh(); renderAccount();
 initDb();
 
-/* /#case=<id> opens straight onto a case, which is how the admin's
-   "View on site" lands on the one you were editing */
+/* /#case=<id> opens straight onto a case. The admin's "View on site" adds
+   &preview, which turns tracking off for the rest of that tab, so an admin
+   checking their own edits never shows up as a visitor in the analytics. */
 const linkedCase = (location.hash.match(/^#case=([\w-]+)/) || [])[1];
+if(/[#&]preview\b/.test(location.hash)) try{ sessionStorage.setItem("lj_notrack", "1"); }catch(e){}
 if(linkedCase && byId[linkedCase]){ history.replaceState(null, "", location.pathname); openCase(linkedCase, null, "link"); }
 
 /* The page is going: write the open case visit and clip viewing now and
@@ -1815,4 +1818,18 @@ addEventListener("pagehide", ()=>{
   endVisit(true);
   [watchFeed, player].forEach(f=>{ if(f) f.endView(true); });
   if(window.LJ_TRACK) LJ_TRACK.flush();
+});
+/* A phone that backgrounds a tab may throw it away later without any
+   pagehide, so hidden is the last moment that can be trusted. The case
+   visit writes its time so far and carries on (only its seconds are ever
+   summed). A clip viewing is closed and written, and coming back to the tab
+   starts a fresh one, since every clip_watch row counts as a play. */
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "hidden"){
+    endVisit(true);
+    [watchFeed, player].forEach(f=>{ if(f) f.endView(); });
+    if(window.LJ_TRACK) LJ_TRACK.flush();
+  } else {
+    [watchFeed, player].forEach(f=>{ if(f && f.wanted && f.active) f.enter(f.active); });
+  }
 });

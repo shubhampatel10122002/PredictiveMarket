@@ -198,7 +198,7 @@ function shell(page){
         <div class="a-brand"><span class="wordmark">Launch<span>Justice</span></span><span class="kick">Admin</span></div>
         <nav class="a-nav" aria-label="Admin">${NAV.map(([k, t, ic]) => `<a href="#/${k}" data-nav="${k}">${ic}${t}${k === "clips" ? '<span class="n" id="needN" hidden></span>' : ""}</a>`).join("")}</nav>
         <div class="a-foot"><small class="muted">Signed in as</small><b>${esc(S.session.user.email)}</b>
-          <div class="row"><a href="/" target="_blank" rel="noopener">${I.ext}View site</a><button id="signout">${I.out}Sign out</button></div></div>
+          <div class="row"><a href="/#preview" target="_blank" rel="noopener">${I.ext}View site</a><button id="signout">${I.out}Sign out</button></div></div>
       </aside>
       <main class="a-main" id="main"></main></div>`;
     const main = $("#main");
@@ -351,7 +351,7 @@ function drawTop(){
   top.classList.toggle("is-dirty", d.dirty);
   top.innerHTML = `<a class="back" href="#/cases">${I.back}Cases</a>
     <h1>${esc(c.head || c.title || "New case")}</h1>${statusPill(d.status, d.hasDemo)}<span class="dirty">● Unsaved</span>
-    ${live && !d.isNew ? `<a class="btn line sm" href="/#case=${encodeURIComponent(c.id)}" target="_blank" rel="noopener">${I.ext}View on site</a>` : ""}
+    ${live && !d.isNew ? `<a class="btn line sm" href="/#case=${encodeURIComponent(c.id)}&preview" target="_blank" rel="noopener">${I.ext}View on site</a>` : ""}
     ${live ? `<button class="btn primary sm" data-act="save">Save changes</button>`
       : d.status === "hidden" ? `<button class="btn line sm" data-act="save">Save</button><button class="btn primary sm" data-act="publish">Show on site</button>`
       : `<button class="btn line sm" data-act="save">Save draft</button><button class="btn primary sm" data-act="publish">Publish</button>`}`;

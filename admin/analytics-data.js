@@ -492,9 +492,10 @@
         cl.m.plays[i] += p; cl.m.viewers[i] += pos(r.viewers); cl.m.watchSec[i] += pos(r.secs);
         cl.m.completes[i] += pos(r.completes); x.m.completes[i] += pos(r.completes);
         if(arr(r.reach).length >= 10){
-          const acc = reach.get(cl) || {n: 0, r: zeros(10)}; acc.n += p;
-          for(let j = 0; j < 10; j++) acc.r[j] += Math.min(p, pos(r.reach[j]));
+          const acc = reach.get(cl) || {n: 0, r: zeros(10)}, rr = Array.from({length: 10}, (_, j) => Math.min(p, pos(r.reach[j])));
+          acc.n += p; for(let j = 0; j < 10; j++) acc.r[j] += rr[j];
           reach.set(cl, acc);
+          (cl.realReach || (cl.realReach = [])).push({i, p, r: rr});   /* by day, so a range can have its own curve */
         }
       }
       for(const r of arr(real.attrib)){
@@ -508,20 +509,24 @@
       }
       if(Number.isFinite(+real.total) && real.total !== null) realEvents = +real.total;
     }
+    /* one row per pledge or comment, or a day's total with n */
+    const many = r => r.n != null ? pos(r.n) : 1;
     for(const p of arr(opts.pledges)){
-      const h = row(p); if(!h) continue;
-      h[0].m.pledges[h[1]] += 1; h[0].m.amount[h[1]] += pos(p.amount); realPledges++;
+      const h = row(p); if(!h) continue; const k = many(p);
+      h[0].m.pledges[h[1]] += k; h[0].m.amount[h[1]] += pos(p.amount); realPledges += k;
     }
     for(const cm of arr(opts.comments)){
-      const h = row(cm); if(!h) continue;
-      h[0].m.comments[h[1]] += 1; realComments++;
+      const h = row(cm); if(!h) continue; const k = many(cm);
+      h[0].m.comments[h[1]] += k; realComments += k;
     }
 
     /* A clip's retention is one curve: the baseline's, weighted by its
        plays, blended with real reach, weighted by real plays. */
     cases.forEach((x, j) => x.clips.forEach((cl, k) => {
       const s = syn[j], sn = s ? s.synth[k] : 0, sr = s && s.rets[k], rl = reach.get(cl) || {n: 0, r: zeros(10)}, n = sn + rl.n;
-      cl.retention = Array.from({length: 11}, (_, i) => i === 0 ? 1 : n > 0 ? clamp(((sn ? sn * sr[i] : 0) + rl.r[i-1]) / n, 0, 1) : 0);
+      cl.synRet = sn ? sr : null;
+      /* no plays, no curve: nothing is known about where viewers stop */
+      cl.retention = n > 0 ? Array.from({length: 11}, (_, i) => i === 0 ? 1 : clamp(((sn ? sn * sr[i] : 0) + rl.r[i-1]) / n, 0, 1)) : null;
     }));
 
     /* The feed of real things that happened, newest first. */
@@ -530,9 +535,9 @@
     const keep = (r, at) => r && byId.has(String(r.case_id)) && row({case_id: r.case_id, d: at});
     const recent = [
       ...arr(real && real.recent).filter(r => keep(r, r.at)).map(r => ({...r})),
-      ...arr(opts.pledges).filter(p => keep(p, p.created_at)).map(p => ({at: p.created_at, kind: "pledge", case_id: p.case_id,
+      ...arr(opts.recentPledges ?? opts.pledges).filter(p => keep(p, p.created_at)).map(p => ({at: p.created_at, kind: "pledge", case_id: p.case_id,
         clip: null, via: null, seconds: null, pct: null, actor_id: p.actor_id ?? null, amount: pos(p.amount), name: p.display_name ?? null})),
-      ...arr(opts.comments).filter(cm => keep(cm, cm.created_at)).map(cm => ({at: cm.created_at, kind: "comment", case_id: cm.case_id,
+      ...arr(opts.recentComments ?? opts.comments).filter(cm => keep(cm, cm.created_at)).map(cm => ({at: cm.created_at, kind: "comment", case_id: cm.case_id,
         clip: null, via: null, seconds: null, pct: null, actor_id: cm.actor_id ?? null, name: cm.name ?? null}))
     ].sort((a, b) => t(b.at) - t(a.at)).slice(0, 40);
 
@@ -599,6 +604,17 @@
     return out;
   }
 
+  /* The drop-off curve for one range: the baseline's shape weighted by its
+     plays in the range, blended with the real reach recorded on those days.
+     null when nothing was played. */
+  function rangeRetention(cl, plays, a, b){
+    let rp = 0; const R = zeros(10);
+    for(const q of cl.realReach || []) if(q.i >= a && q.i <= b){ rp += q.p; for(let j = 0; j < 10; j++) R[j] += q.r[j]; }
+    const sp = cl.synRet ? Math.max(0, plays - rp) : 0, n = sp + rp;
+    if(!(n > 0)) return null;
+    return Array.from({length: 11}, (_, i) => i === 0 ? 1 : clamp(((sp ? sp * cl.synRet[i] : 0) + R[i-1]) / n, 0, 1));
+  }
+
   function clipStats(model, caseId, from, to){
     const [a, b] = span(model, from, to), out = [];
     for(const x of model.cases){
@@ -609,7 +625,7 @@
           plays: s.plays, viewers: s.viewers, watchSec: s.watchSec, completes: s.completes, avgWatchSec,
           avgPct: Math.min(1, ratio(avgWatchSec, cl.dur)), completeRate: ratio(s.completes, s.plays),
           toCase: s.toCase, toInvest: s.toInvest, toCaseRate: ratio(s.toCase, s.plays), toInvestRate: ratio(s.toInvest, s.plays),
-          retention: cl.retention.slice()});
+          retention: rangeRetention(cl, s.plays, a, b)});
       }
     }
     return out.sort((p, q) => q.plays - p.plays);
