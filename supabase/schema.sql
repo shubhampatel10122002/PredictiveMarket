@@ -421,3 +421,91 @@ as $$
 $$;
 revoke all on function public.admin_team() from public, anon;
 grant execute on function public.admin_team() to authenticated;
+
+
+-- ============================================================ analytics ======
+-- What people do on the site, one row per thing they did. The site only ever
+-- inserts; nobody can read rows back over the API. Admins see aggregates
+-- through admin_analytics(), which /admin/#/analytics lays over its demo history.
+--
+--   case_view    a case page was opened. via: where from (watch, player, cases,
+--                trending, link, mine, other); clip: the reel it was opened from
+--   case_time    seconds spent on a case page, sent when they leave it
+--   clip_watch   one viewing of one clip: seconds actually played, pct of the
+--                clip reached (0..1), via watch or player. clip: 'hero' or the clip id
+--   invest_open  the invest sheet was opened. via: case, watch, player, other
+--   share        the share button was used
+
+create table public.events (
+  id bigint generated always as identity primary key,
+  at timestamptz not null default now(),
+  kind text not null check (kind in ('case_view','case_time','clip_watch','invest_open','share')),
+  case_id text not null check (char_length(case_id) between 1 and 64),
+  clip text check (char_length(clip) <= 64),
+  via text check (char_length(via) <= 20),
+  seconds real check (seconds >= 0 and seconds <= 7200),
+  pct real check (pct >= 0 and pct <= 1),
+  actor_id text not null check (char_length(actor_id) <= 64 and (actor_id like 'd:%' or actor_id like 'u:%'))
+);
+comment on table public.events is
+  'Site activity for /admin analytics. Insert-only from the browser; read through admin_analytics().';
+create index events_at_idx on public.events (at);
+create index events_case_kind_idx on public.events (case_id, kind, at);
+
+alter table public.events enable row level security;
+create policy "anyone records activity" on public.events
+  for insert to anon, authenticated
+  with check (actor_id like 'd:%' or actor_id like 'u:%');
+revoke all on public.events from anon, authenticated;
+grant insert (kind, case_id, clip, via, seconds, pct, actor_id) on public.events to anon, authenticated;
+
+-- Everything the analytics page needs, aggregated by UTC day. Null for non-admins.
+create function public.admin_analytics()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select case when not public.is_admin() then null else jsonb_build_object(
+    'daily', coalesce((select jsonb_agg(x) from (
+        select to_char(e.at at time zone 'utc', 'YYYY-MM-DD') as d, e.case_id, e.kind,
+               count(*) as n, count(distinct e.actor_id) as actors,
+               coalesce(sum(e.seconds), 0) as secs
+        from public.events e
+        group by 1, 2, 3) x), '[]'::jsonb),
+    'clips', coalesce((select jsonb_agg(x) from (
+        select to_char(e.at at time zone 'utc', 'YYYY-MM-DD') as d, e.case_id, e.clip,
+               count(*) as plays, count(distinct e.actor_id) as viewers,
+               coalesce(sum(e.seconds), 0) as secs,
+               count(*) filter (where e.pct >= .9) as completes,
+               jsonb_build_array(
+                 count(*) filter (where e.pct >= .1), count(*) filter (where e.pct >= .2),
+                 count(*) filter (where e.pct >= .3), count(*) filter (where e.pct >= .4),
+                 count(*) filter (where e.pct >= .5), count(*) filter (where e.pct >= .6),
+                 count(*) filter (where e.pct >= .7), count(*) filter (where e.pct >= .8),
+                 count(*) filter (where e.pct >= .9), count(*) filter (where e.pct >= .98)) as reach
+        from public.events e
+        where e.kind = 'clip_watch' and e.clip is not null and e.seconds >= 1
+        group by 1, 2, 3) x), '[]'::jsonb),
+    'attrib', coalesce((select jsonb_agg(x) from (
+        select to_char(e.at at time zone 'utc', 'YYYY-MM-DD') as d, e.case_id, e.clip, e.kind, count(*) as n
+        from public.events e
+        where e.kind in ('case_view', 'invest_open') and e.clip is not null
+        group by 1, 2, 3, 4) x), '[]'::jsonb),
+    'via', coalesce((select jsonb_agg(x) from (
+        select to_char(e.at at time zone 'utc', 'YYYY-MM-DD') as d, e.case_id,
+               coalesce(e.via, 'other') as via, count(*) as n
+        from public.events e
+        where e.kind = 'case_view'
+        group by 1, 2, 3) x), '[]'::jsonb),
+    'recent', coalesce((select jsonb_agg(x) from (
+        select e.at, e.kind, e.case_id, e.clip, e.via, e.seconds, e.pct, e.actor_id
+        from public.events e
+        order by e.at desc
+        limit 40) x), '[]'::jsonb),
+    'total', (select count(*) from public.events)
+  ) end;
+$$;
+revoke all on function public.admin_analytics() from public, anon;
+grant execute on function public.admin_analytics() to authenticated;

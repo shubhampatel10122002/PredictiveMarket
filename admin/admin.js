@@ -50,6 +50,7 @@ document.addEventListener("load",  e => { const t = e.target; if(t.tagName === "
 const svg = (d, w=2) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 const I = {
   overview: svg('<rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/>'),
+  analytics: svg('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
   cases: svg('<path d="M12 3v18M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0zM8 21h8"/>'),
   clips: svg('<rect x="5" y="2.5" width="14" height="19" rx="3"/><path d="M10.5 9.5v5l4-2.5z" fill="currentColor"/>'),
   media: svg('<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>'),
@@ -187,7 +188,7 @@ function renderNotAdmin(){
 }
 
 /* ============ frame and routing ============ */
-const NAV = [["overview","Overview",I.overview],["cases","Cases",I.cases],["clips","Clips & video",I.clips],
+const NAV = [["overview","Overview",I.overview],["analytics","Analytics",I.analytics],["cases","Cases",I.cases],["clips","Clips & video",I.clips],
              ["media","Media library",I.media],["pledges","Pledges",I.pledges],["comments","Comments",I.comments],["team","Team",I.team]];
 
 function shell(page){
@@ -229,6 +230,7 @@ function route(){
   if(page !== "case"){ draft = null; closeDrawer(true); }
   const pages = {overview:pageOverview, cases:pageCases, clips:pageClips, media:pageMedia, pledges:pagePledges, comments:pageComments, team:pageTeam};
   if(page === "case") return pageCase(a, b || "basics", c);
+  if(page === "analytics") return pageAnalytics(a);
   (pages[page] || pageOverview)();
 }
 window.addEventListener("hashchange", route);
