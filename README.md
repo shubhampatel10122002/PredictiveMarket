@@ -197,6 +197,7 @@ carries its own words. The beats stay in the data as the written version.
 sign-in. It is where cases, clips and video go in.
 
 - **Overview**: live cases, clips still waiting for video, the latest pledges and comments
+- **Analytics**: how every case is doing on attention and on money. See *The analytics page* below
 - **Cases**: every case, demo and new. The editor covers everything the case page
   shows, with the site's own score dial, waterfall, bloom and runway redrawn as
   you type, and a Raw data tab for anything the form does not cover
@@ -221,9 +222,83 @@ How it fits together:
   caps a single file at 50 MB, which is plenty for a minute of 720p vertical video.
 - Access is the `admins` table, checked by the database on every write through
   `is_admin()`, so the hidden URL is not the lock. A leaked link opens a sign-in
-  screen, and a signed-in stranger still cannot change anything. Admins sign in
-  with an ordinary site account on a confirmed email; add people under Team.
+  screen, and a signed-in stranger still cannot change anything.
+- Logins involve no email at all. On Team, adding an email with a password
+  creates a login that works at once, and any admin can set a new password for
+  any other admin, which is how a forgotten password is fixed. An email that
+  already has its own site account just gets access and keeps its password, so
+  a backer's account can't be taken over from there. `admin_set_login()` and
+  `admin_team()` in the database do this. Supabase's own reset emails aren't used:
+  its built-in mailer only reaches the Supabase project's own team members.
 - `/#case=<id>` on the site opens a case directly, which is what "View on site" uses.
+
+## Analytics tracking
+
+The site records what people open, watch and back in the `events` table, so
+the admin can show which cases and clips are actually holding attention.
+`track.js` queues rows and sends them in batches: every four seconds while
+there is something to send, and again when the tab is hidden or the page
+closes, using `keepalive` so the last batch outlives the page. `app.js`
+decides when each row is written. With no Supabase in `config.js`, nothing is
+recorded and nothing breaks.
+
+| Kind | Written when | Fields |
+| --- | --- | --- |
+| `case_view` | a case page is opened by a person. Redrawing the case already open, after a rating or back from the score breakdown, is not a view | `via`: `cases`, `trending`, `watch`, `player`, `mine`, `link` or `other`; `clip` when opened from a reel |
+| `case_time` | the person leaves that case: another case, another tab, or the page closing. Counts only while the case or its score breakdown is on screen and the browser tab is visible, never under the clip player. Under a second is dropped; capped at an hour | `seconds` |
+| `clip_watch` | a reel stops being the one on screen: scrolled past, the feed paused for another tab or a sheet, the player closed, or the page closing. Counts only while the clip is playing, so not after a tap to pause and not in a hidden tab. An embedded player has no clock to read, so it counts while it is mounted. Under a second is dropped | `clip`, `via` (`watch` or `player`), `seconds`, and `pct`: seconds over the clip's length, capped at 1 even when it loops |
+| `invest_open` | the invest sheet is opened. Coming back to it from "how the split works" is not a new one | `via`: `case`, `watch`, `player` or `other`; `clip` from a reel |
+| `share` | the share button on a reel is used | `via`, `clip` |
+
+`clip` is `hero` for a case's own 60-second clip, otherwise the clip's `id`.
+Every row carries the same `actor_id` as pledges and comments, `d:<random>`
+for a browser and `u:<uuid>` for an account, and nothing else about the
+person. The browser can only insert into `events`: no reads, edits or
+deletes, and only the publishable key is sent.
+
+## The analytics page
+
+`/admin/#/analytics`, and `/admin/#/analytics/<case>` for one case. One row of
+filters scopes everything: 7, 30 or 90 days or all time, compared with the
+period before.
+
+- **KPI row**: invested, new backers, case visits, clip plays, watch time, and
+  visit-to-investment conversion
+- **Money invested per day**, stacked by case (by week past three months)
+- **What stands out**: plain-English findings worked out from the numbers, such
+  as the fastest case to half funded, a case people watch but rarely back, the
+  case furthest from its goal at its current pace, a clip that sends unusually
+  many people on to its case
+- **Attention against money**: minutes spent per day against dollars per day,
+  split at the medians into watched and funded, watched not funded, funded
+  quietly, and not landing yet
+- **Cases**: a sortable leaderboard with funded %, money and backers in the
+  period, visits, conversion, time on page, watch time, the last 14 days'
+  trend, and how long until fully funded at the current pace
+- **Funding race** (share of goal by days since listing) and **days to half
+  funded**: which cases filled fast and which never got going
+- **Clips**: plays, average watch, completion, click-through to the case and to
+  invest, and a drop-off curve showing where viewers stop
+- **From clip to investment** (plays, visits, invest opened, invested),
+  **where visits come from**, and a **live feed** of real events
+
+Every chart has a Table button with the same numbers. One case on its own adds
+money raised against its goal with the recent pace projected, its funding
+milestones, and daily visits and money.
+
+**Demo history.** The platform has few real users yet, so `admin/analytics-data.js`
+builds a believable daily history for every case from listing day to today, out
+of the case's own numbers: it adds up exactly to `baseRaised` and `baseBackers`,
+the last week matches the trending badge ("+4,106 backers this week"), and each
+demo case has a story (maple-evictions went viral, farmworker-wages is the slow
+burner, school-facial-rec is watched but not funded). Real tracked activity,
+real pledges and real comments are added on top, the same way the site adds
+real pledges to `baseRaised`. Untick **Include demo history** to see real
+activity only, which is how to check tracking works. The history is seeded per
+case, so it is the same on every load.
+
+Real activity reaches the page through `admin_analytics()`, which returns
+daily aggregates per case and per clip to admins only.
 
 ## Run locally
 

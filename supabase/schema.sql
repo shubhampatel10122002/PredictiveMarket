@@ -334,3 +334,209 @@ create policy "admins replace media" on storage.objects
   with check (bucket_id = 'media' and (select public.is_admin()));
 create policy "admins delete media" on storage.objects
   for delete to authenticated using (bucket_id = 'media' and (select public.is_admin()));
+
+-- Admins create logins for each other: an email and a password, usable at once.
+-- No email is sent. An account that already exists on the site keeps its own
+-- password unless it is already an admin, so this can't take over a backer's account.
+create function public.admin_set_login(p_email text, p_password text)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_email text := lower(trim(p_email));
+  v_uid uuid;
+  v_was_admin boolean;
+  v_result text;
+begin
+  if not public.is_admin() then
+    raise exception 'not an admin' using errcode = '42501';
+  end if;
+  if v_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' then
+    raise exception 'That doesn''t look like an email address' using errcode = '22023';
+  end if;
+  if p_password is null or char_length(p_password) < 6 then
+    raise exception 'Passwords need at least 6 characters' using errcode = '22023';
+  end if;
+
+  select exists (select 1 from public.admins a where a.email = v_email) into v_was_admin;
+  select u.id into v_uid from auth.users u where lower(u.email) = v_email;
+
+  if v_uid is null then
+    v_uid := gen_random_uuid();
+    insert into auth.users (
+      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+      confirmation_token, recovery_token, email_change_token_new, email_change,
+      email_change_token_current, phone_change, phone_change_token, reauthentication_token
+    ) values (
+      '00000000-0000-0000-0000-000000000000', v_uid, 'authenticated', 'authenticated', v_email,
+      extensions.crypt(p_password, extensions.gen_salt('bf')), now(),
+      '{"provider":"email","providers":["email"]}'::jsonb,
+      jsonb_build_object('display_name', split_part(v_email, '@', 1)), now(), now(),
+      '', '', '', '', '', '', '', ''
+    );
+    insert into auth.identities (provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+    values (v_uid::text, v_uid,
+            jsonb_build_object('sub', v_uid::text, 'email', v_email, 'email_verified', true),
+            'email', now(), now(), now());
+    v_result := 'created';
+  elsif v_was_admin then
+    update auth.users
+       set encrypted_password = extensions.crypt(p_password, extensions.gen_salt('bf')),
+           email_confirmed_at = coalesce(email_confirmed_at, now()),
+           updated_at = now()
+     where id = v_uid;
+    v_result := 'password_set';
+  else
+    v_result := 'existing_account';
+  end if;
+
+  insert into public.admins (email, added_by)
+  values (v_email, (select u.email from auth.users u where u.id = (select auth.uid())))
+  on conflict (email) do nothing;
+
+  return v_result;
+end;
+$$;
+revoke all on function public.admin_set_login(text, text) from public, anon;
+grant execute on function public.admin_set_login(text, text) to authenticated;
+
+-- The team list, with whether each person can actually sign in yet.
+create function public.admin_team()
+returns table (email text, added_by text, created_at timestamptz, can_sign_in boolean, last_sign_in_at timestamptz)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select a.email, a.added_by, a.created_at,
+         (u.id is not null and u.email_confirmed_at is not null),
+         u.last_sign_in_at
+  from public.admins a
+  left join auth.users u on lower(u.email) = a.email
+  where public.is_admin()
+  order by a.created_at;
+$$;
+revoke all on function public.admin_team() from public, anon;
+grant execute on function public.admin_team() to authenticated;
+
+
+-- ============================================================ analytics ======
+-- What people do on the site, one row per thing they did. The site only ever
+-- inserts; nobody can read rows back over the API. Admins see aggregates
+-- through admin_analytics(), which /admin/#/analytics lays over its demo history.
+--
+--   case_view    a case page was opened. via: where from (watch, player, cases,
+--                trending, link, mine, other); clip: the reel it was opened from
+--   case_time    seconds spent on a case page, sent when they leave it
+--   clip_watch   one viewing of one clip: seconds actually played, pct of the
+--                clip reached (0..1), via watch or player. clip: 'hero' or the clip id
+--   invest_open  the invest sheet was opened. via: case, watch, player, other
+--   share        the share button was used
+
+create table public.events (
+  id bigint generated always as identity primary key,
+  at timestamptz not null default now(),
+  kind text not null check (kind in ('case_view','case_time','clip_watch','invest_open','share')),
+  case_id text not null check (char_length(case_id) between 1 and 64),
+  clip text check (char_length(clip) <= 64),
+  via text check (char_length(via) <= 20),
+  seconds real check (seconds >= 0 and seconds <= 7200),
+  pct real check (pct >= 0 and pct <= 1),
+  actor_id text not null check (char_length(actor_id) <= 64 and (actor_id like 'd:%' or actor_id like 'u:%'))
+);
+comment on table public.events is
+  'Site activity for /admin analytics. Insert-only from the browser; read through admin_analytics().';
+create index events_at_idx on public.events (at);
+create index events_case_kind_idx on public.events (case_id, kind, at);
+
+alter table public.events enable row level security;
+create policy "anyone records activity" on public.events
+  for insert to anon, authenticated
+  with check (actor_id like 'd:%' or actor_id like 'u:%');
+revoke all on public.events from anon, authenticated;
+grant insert (kind, case_id, clip, via, seconds, pct, actor_id) on public.events to anon, authenticated;
+
+-- Everything the analytics page needs, aggregated by UTC day. Null for non-admins.
+-- Activity by the team's own signed-in accounts is left out, so checking the
+-- site doesn't show up as visitors. Pledges and comments come back as daily
+-- totals plus the latest few, so no API row cap can cut the history short.
+-- pct is a 4-byte real, so its thresholds are compared as reals: a stored
+-- 0.9 is 0.8999999762, which a plain .9 would miss.
+create function public.admin_analytics()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  with staff as (
+    select 'u:' || u.id::text as actor
+    from auth.users u join public.admins a on a.email = lower(u.email)
+  ), ev as (
+    select e.* from public.events e
+    where not exists (select 1 from staff s where s.actor = e.actor_id)
+  )
+  select case when not public.is_admin() then null else jsonb_build_object(
+    'daily', coalesce((select jsonb_agg(x) from (
+        select to_char(e.at at time zone 'utc', 'YYYY-MM-DD') as d, e.case_id, e.kind,
+               count(*) as n, count(distinct e.actor_id) as actors,
+               coalesce(sum(e.seconds), 0) as secs
+        from ev e
+        group by 1, 2, 3) x), '[]'::jsonb),
+    'clips', coalesce((select jsonb_agg(x) from (
+        select to_char(e.at at time zone 'utc', 'YYYY-MM-DD') as d, e.case_id, e.clip,
+               count(*) as plays, count(distinct e.actor_id) as viewers,
+               coalesce(sum(e.seconds), 0) as secs,
+               count(*) filter (where e.pct >= .9::real) as completes,
+               jsonb_build_array(
+                 count(*) filter (where e.pct >= .1::real), count(*) filter (where e.pct >= .2::real),
+                 count(*) filter (where e.pct >= .3::real), count(*) filter (where e.pct >= .4::real),
+                 count(*) filter (where e.pct >= .5::real), count(*) filter (where e.pct >= .6::real),
+                 count(*) filter (where e.pct >= .7::real), count(*) filter (where e.pct >= .8::real),
+                 count(*) filter (where e.pct >= .9::real), count(*) filter (where e.pct >= .98::real)) as reach
+        from ev e
+        where e.kind = 'clip_watch' and e.clip is not null and e.seconds >= 1
+        group by 1, 2, 3) x), '[]'::jsonb),
+    'attrib', coalesce((select jsonb_agg(x) from (
+        select to_char(e.at at time zone 'utc', 'YYYY-MM-DD') as d, e.case_id, e.clip, e.kind, count(*) as n
+        from ev e
+        where e.kind in ('case_view', 'invest_open') and e.clip is not null
+        group by 1, 2, 3, 4) x), '[]'::jsonb),
+    'via', coalesce((select jsonb_agg(x) from (
+        select to_char(e.at at time zone 'utc', 'YYYY-MM-DD') as d, e.case_id,
+               coalesce(e.via, 'other') as via, count(*) as n
+        from ev e
+        where e.kind = 'case_view'
+        group by 1, 2, 3) x), '[]'::jsonb),
+    'pledges', coalesce((select jsonb_agg(x) from (
+        select to_char(p.created_at at time zone 'utc', 'YYYY-MM-DD') as d, p.case_id,
+               count(*) as n, sum(p.amount) as amount
+        from public.pledges p
+        group by 1, 2) x), '[]'::jsonb),
+    'comments', coalesce((select jsonb_agg(x) from (
+        select to_char(c.created_at at time zone 'utc', 'YYYY-MM-DD') as d, c.case_id, count(*) as n
+        from public.comments c
+        group by 1, 2) x), '[]'::jsonb),
+    'recent', coalesce((select jsonb_agg(x) from (
+        select e.at, e.kind, e.case_id, e.clip, e.via, e.seconds, e.pct, e.actor_id
+        from ev e
+        order by e.at desc
+        limit 40) x), '[]'::jsonb),
+    'recent_pledges', coalesce((select jsonb_agg(x) from (
+        select p.case_id, p.amount, p.display_name, p.actor_id, p.created_at
+        from public.pledges p
+        order by p.created_at desc
+        limit 40) x), '[]'::jsonb),
+    'recent_comments', coalesce((select jsonb_agg(x) from (
+        select c.case_id, c.name, c.actor_id, c.created_at
+        from public.comments c
+        order by c.created_at desc
+        limit 40) x), '[]'::jsonb),
+    'total', (select count(*) from ev)
+  ) end;
+$$;
+revoke all on function public.admin_analytics() from public, anon;
+grant execute on function public.admin_analytics() to authenticated;
