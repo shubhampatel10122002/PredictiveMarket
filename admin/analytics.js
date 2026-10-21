@@ -47,6 +47,7 @@ const sum = (a, f = 0, t = a.length - 1) => { let s = 0; for(let i = Math.max(0,
 
 /* "up is good" decides the colour, the arrow is always the direction */
 function delta(cur, prev, upGood = true){
+  if(!AN.period) return "";
   if(!prev) return cur ? `<span class="dl new">new</span>` : "";
   const r = (cur - prev) / prev; if(Math.abs(r) < .005) return `<span class="dl flat">±0%</span>`;
   const good = (r > 0) === upGood;
@@ -54,7 +55,7 @@ function delta(cur, prev, upGood = true){
 }
 const TREND = {accelerating: ["good", "▲", "Accelerating"], steady: ["neutral", "●", "Steady"], slowing: ["warn", "▼", "Slowing"],
                stalled: ["bad", "■", "Stalled"], new: ["info", "✦", "New"]};
-const trendPill = t => { const [tone, ic, label] = TREND[t] || TREND.steady; return `<span class="tp ${tone}"><i>${ic}</i>${label}</span>`; };
+const trendPill = t => { const [tone, ic, label] = TREND[t] || TREND.steady; return `<span class="tp tp-${tone}"><i>${ic}</i>${label}</span>`; };
 
 /* ---------- data ---------- */
 async function loadAnalytics(force){
@@ -124,7 +125,7 @@ function filters(model, one){
 function overview(model, sm, from, to){
   const P = sm.platform, per = sm.range.days, cmp = AN.period ? `vs previous ${per} days` : "";
   const tile = (label, v, d, sub, spark, hl) => `<div class="tile an-tile${hl ? " hl" : ""}"><small>${label}</small><b>${v}</b>
-    <span class="an-sub">${d}${d && sub ? " " : ""}${sub ? `<em>${sub}</em>` : ""}</span>${spark ? `<span class="an-spark">${sparkSvg(spark, hl)}</span>` : ""}</div>`;
+    <span class="an-sub">${d}${d && sub ? " " : ""}${sub ? `<em>${sub}</em>` : ""}</span>${spark ? `<span class="an-spark">${sparkSvg(spark, hl, false, true)}</span>` : ""}</div>`;
   const insights = LJ_ANALYTICS.insights(sm);
   const clips = LJ_ANALYTICS.clipStats(model, null, from, to);
   if(!AN.clip || !clips.some(c => c.caseId + ":" + c.key === AN.clip)) AN.clip = clips[0] ? clips[0].caseId + ":" + clips[0].key : null;
@@ -221,7 +222,7 @@ function caseTable(sm){
       <td class="num">${fDur(t.avgTimeSec)}</td>
       <td class="num">${fHours(t.watchSec)}</td>
       <td class="num"><span class="an-mom">${sparkSvg(c.spark)}${trendPill(c.trend)}</span></td>
-      <td class="num">${c.fundedPct >= 1 ? `<span class="tp good"><i>✓</i>Funded</span>` : c.etaDays == null ? "—" : fSpan(c.etaDays)}</td></tr>`; }).join("")}
+      <td class="num">${c.fundedPct >= 1 ? `<span class="tp tp-good"><i>✓</i>Funded</span>` : c.etaDays == null ? "—" : fSpan(c.etaDays)}</td></tr>`; }).join("")}
     </tbody></table>`;
 }
 
@@ -622,8 +623,12 @@ function sourceBars(s){
 }
 
 /* 14 points, de-emphasised, with today marked */
-function sparkSvg(v, light, ret){
+function sparkSvg(v, light, ret, wide){
   if(!v || v.length < 2) return "";
+  /* in a tile the line runs the tile's width, so it stretches and has no end dot */
+  if(wide){ const max = Math.max(1e-9, ...v), w = 200, h = 24;
+    return `<svg class="spk wide${light ? " on-dark" : ""}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" width="100%" height="${h}" aria-hidden="true">
+      <polyline vector-effect="non-scaling-stroke" points="${v.map((x, i) => (i / (v.length - 1) * w).toFixed(1) + "," + (h - 2 - x / max * (h - 4)).toFixed(1)).join(" ")}"/></svg>`; }
   const w = ret ? 64 : 76, h = ret ? 22 : 26, max = ret ? 1 : Math.max(1e-9, ...v), min = 0;
   const p = v.map((x, i) => [(i / (v.length - 1) * (w - 4) + 2).toFixed(1), (h - 3 - (x - min) / (max - min || 1) * (h - 6)).toFixed(1)]);
   const last = p[p.length - 1];
