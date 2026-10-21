@@ -25,13 +25,14 @@
    so nothing here touches admin.js globals until it is called.
    ===================================================================== */
 
-const AN = {period: 30, demo: true, data: null, loadedAt: 0, sort: {key: "raised", dir: -1}, clip: null, seq: 0};
+const AN = {period: 30, demo: true, data: null, loadedAt: 0, sort: {key: "raised", dir: -1}, clip: null, allClips: false, seq: 0};
 const AN_PERIODS = [[7, "7 days"], [30, "30 days"], [90, "90 days"], [0, "All time"]];
 
 /* ---------- formatting ---------- */
 const fUsd = n => { n = Math.round(n || 0);
   return n >= 1e6 ? "$" + (n / 1e6).toFixed(n >= 1e7 ? 1 : 2).replace(/\.?0+$/, "") + "M"
        : n >= 1e3 ? "$" + (n / 1e3).toFixed(n >= 1e5 ? 0 : 1).replace(/\.0$/, "") + "k" : "$" + n; };
+const fUsdC = n => (n || 0) < 10 ? "$" + (n || 0).toFixed(2) : fUsd(n);
 const fN = n => { n = Math.round(n || 0);
   return n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k"
        : n >= 1e3 ? (n / 1e3).toFixed(1).replace(/\.0$/, "") + "k" : String(n); };
@@ -109,7 +110,7 @@ function filters(model, one){
       <h1>${one ? esc(one.title) : "Analytics"}</h1>
       <p>${one ? `Listed ${dayLabel(model.days[one.listedIdx], true)} · ${esc(one.c.ngo || "")}` : "Which cases are working, which are stuck, and the clips in between."}</p></div></div>
     <div class="an-bar">
-      <div class="seg" role="group" aria-label="Period">${AN_PERIODS.map(([d, t]) =>
+      <div class="an-seg" role="group" aria-label="Period">${AN_PERIODS.map(([d, t]) =>
         `<button data-period="${d}" aria-pressed="${AN.period === d}">${t}</button>`).join("")}</div>
       <label class="an-demo"><input type="checkbox" id="anDemo"${AN.demo ? " checked" : ""}>Include demo history</label>
       <span class="grow"></span>
@@ -134,7 +135,7 @@ function overview(model, sm, from, to){
     ${tile("Case visits", fN(P.visits), delta(P.visits, P.prev.visits), "", sm.series.visits)}
     ${tile("Clip plays", fN(P.plays), delta(P.plays, P.prev.plays), "", sm.series.plays)}
     ${tile("Watch time", fHours(P.watchSec), delta(P.watchSec, P.prev.watchSec), "", sm.series.watchSec)}
-    ${tile("Visit to investment", fPct(P.conversion), delta(P.conversion, P.prev.conversion), `${fUsd(P.dollarsPerVisitor)} per visitor`)}
+    ${tile("Visit to investment", fPct(P.conversion), delta(P.conversion, P.prev.conversion), `${fUsdC(P.dollarsPerVisitor)} per visitor`)}
   </div>
 
   ${card("money", "Money invested per day", `By case, ${rangeText(sm)}. Hover a column for the split.`, legend(sm.cases), "", "an-wide")}
@@ -148,7 +149,7 @@ function overview(model, sm, from, to){
   <h2 class="a-h">Cases <small>Click a row for that case on its own. Click a heading to sort.</small></h2>
   <div class="tbl-wrap" id="anTable">${caseTable(sm)}</div>
 
-  <div class="an-cols">
+  <div class="an-cols an-cols-race">
     ${card("race", "Funding race", "Share of goal raised against days since listing. The further left a line climbs, the faster that case filled.", legend(sm.cases))}
     <section class="card an-card"><div class="an-ch"><h3>Days to half funded</h3></div>
       <p class="an-cs">How long each case took to raise 50% of its goal. Cases still short show where they are now.</p>
@@ -156,18 +157,18 @@ function overview(model, sm, from, to){
   </div>
 
   <h2 class="a-h">Clips <small>${fN(clips.reduce((s, c) => s + c.plays, 0))} plays in ${rangeText(sm)}. Click a clip to see where viewers stop.</small></h2>
-  <div class="an-cols an-cols-clips">
-    <div class="tbl-wrap" id="anClips">${clipTable(clips)}</div>
-    ${card("ret", "Where viewers stop", "", "", "", "an-ret")}
+  <div class="tbl-wrap" id="anClips">${clipTable(clips)}</div>
+  <div class="an-cols">
+    ${card("ret", "Where viewers stop", "")}
+    ${card("funnel", "From clip to investment", `Everyone on the platform, ${rangeText(sm)}.`)}
   </div>
 
   <div class="an-cols">
-    ${card("funnel", "From clip to investment", `Everyone on the platform, ${rangeText(sm)}.`)}
     ${card("sources", "Where case visits come from", `Every case visit, ${rangeText(sm)}.`)}
-  </div>
-
-  <h2 class="a-h">Live activity <small>Real events as they arrive. Demo history never shows here.</small></h2>
-  <div class="list2" id="anFeed">${feed(model)}</div>`;
+    <section class="card an-card"><div class="an-ch"><h3>Live activity</h3></div>
+      <p class="an-cs">Real events as they arrive, newest first. Demo history never shows here.</p>
+      <div class="an-feed" id="anFeed">${feed(model)}</div></section>
+  </div>`;
 }
 
 const rangeText = sm => AN.period ? `the last ${sm.range.days} days` : `all ${fN(sm.range.days)} days`;
@@ -230,8 +231,8 @@ function halfBars(sm){
     const x = a.milestones[50], y = b.milestones[50];
     if(x != null && y != null) return x - y; if(x != null) return -1; if(y != null) return 1; return b.fundedPct - a.fundedPct; });
   const max = Math.max(1, ...rows.map(c => c.milestones[50] != null ? c.milestones[50] : c.daysLive));
-  return `<div class="hb">${rows.map(c => { const d = c.milestones[50];
-    return `<div class="hb-r"><span class="hb-l"><i style="background:${sColor(c.c)}"></i>${esc(short(c.title, 30))}</span>
+  return `<div class="hb hb-stack">${rows.map(c => { const d = c.milestones[50];
+    return `<div class="hb-r"><span class="hb-l"><i style="background:${sColor(c.c)}"></i>${esc(short(c.title, 48))}</span>
       <span class="hb-t"><span class="hb-f${d == null ? " open" : ""}" style="width:${((d != null ? d : c.daysLive) / max * 100).toFixed(1)}%"></span></span>
       <span class="hb-v">${d != null ? `<b>${d} days</b>` : `<em>${fPct(c.fundedPct)} after ${c.daysLive} days</em>`}</span></div>`; }).join("")}</div>`;
 }
@@ -241,7 +242,7 @@ function clipTable(clips){
   if(!clips.length) return `<div class="empty">No clip plays in this period.</div>`;
   return `<table class="tbl an-tbl"><thead><tr><th>Clip</th><th class="num">Plays</th><th class="num">Avg watched</th>
     <th class="num">Finish</th><th class="num">To case</th><th class="num">To invest</th><th class="num">Drop-off</th></tr></thead><tbody>
-    ${clips.slice(0, 40).map(c => { const k = c.caseId + ":" + c.key;
+    ${clips.slice(0, AN.allClips ? 80 : 10).map(c => { const k = c.caseId + ":" + c.key;
       return `<tr data-clipsel="${esc(k)}" tabindex="0" aria-selected="${AN.clip === k}">
       <td><span class="an-case"><i style="background:${sColor(caseOf(c.caseId))}"></i><span>${esc(short(c.title, 40))}
         <small>${esc(short(c.caseTitle, 40))}${c.kind === "embed" ? " · embedded" : c.kind === "card" ? " · caption card" : ""}</small></span></span></td>
@@ -250,7 +251,8 @@ function clipTable(clips){
       <td class="num">${fPct(c.completeRate)}</td>
       <td class="num">${fPct(c.toCaseRate)}</td>
       <td class="num">${fPct(c.toInvestRate)}</td>
-      <td class="num">${sparkSvg(c.retention, false, true)}</td></tr>`; }).join("")}</tbody></table>`;
+      <td class="num">${sparkSvg(c.retention, false, true)}</td></tr>`; }).join("")}</tbody></table>
+    ${clips.length > 10 ? `<button class="an-more" data-allclips>${AN.allClips ? "Show the top 10" : `Show all ${clips.length} clips`}</button>` : ""}`;
 }
 const caseOf = id => (entry(id) || {c: {cat: "other"}}).c;
 
@@ -316,13 +318,14 @@ function caseView(model, sm, c, from, to){
     ${card("money1", "Invested per day", "")}
   </div>
   <h2 class="a-h">Clips <small>Click a clip to see where viewers stop.</small></h2>
-  <div class="an-cols an-cols-clips">
-    <div class="tbl-wrap" id="anClips">${clipTable(clips)}</div>
-    ${card("ret", "Where viewers stop", "", "", "", "an-ret")}
+  <div class="tbl-wrap" id="anClips">${clipTable(clips)}</div>
+  <div class="an-cols">
+    ${card("ret", "Where viewers stop", "")}
+    ${card("funnel", "From clip to investment", `This case, ${rangeText(sm)}.`)}
   </div>
   <div class="an-cols">
-    ${card("funnel", "From clip to investment", `This case, ${rangeText(sm)}.`)}
     ${card("sources", "Where its visits come from", `${rangeText(sm)[0].toUpperCase() + rangeText(sm).slice(1)}.`)}
+    <span></span>
   </div>`;
 }
 
@@ -341,6 +344,8 @@ function wireAnalytics(model, sm, one, from, to){
     $("#anTable").innerHTML = caseTable(sm); wireAnalytics(model, sm, one, from, to); });
   $$("tr[data-go]", m).forEach(r => { const go = () => location.hash = "#/analytics/" + encodeURIComponent(r.dataset.go);
     r.onclick = e => { if(!e.target.closest("a")) go(); }; r.onkeydown = e => { if(e.key === "Enter") go(); }; });
+  const more = $("[data-allclips]", m);
+  if(more) more.onclick = () => { AN.allClips = !AN.allClips; drawAnalytics(one && one.id); };
   $$("tr[data-clipsel]", m).forEach(r => { const pick = () => { AN.clip = r.dataset.clipsel;
       $$("tr[data-clipsel]", m).forEach(x => x.setAttribute("aria-selected", x === r)); drawRet(model, one, from, to); };
     r.onclick = pick; r.onkeydown = e => { if(e.key === "Enter") pick(); }; });
@@ -377,7 +382,8 @@ function drawRet(model, one, from, to){
   card.querySelector("[data-title]").textContent = c ? "Where viewers stop: " + short(c.title, 34) : "Where viewers stop";
   if(!c){ p.innerHTML = `<div class="empty">No plays in this period.</div>`; return; }
   const [svg, table] = retChart(c, Math.max(260, p.clientWidth));
-  p.innerHTML = svg + `<p class="an-cs">${fN(c.plays)} plays · half of viewers are gone by ${fPct(halfAt(c.retention))} of the clip · ${fPct(c.completeRate)} finish it.
+  const h = halfAt(c.retention);
+  p.innerHTML = svg + `<p class="an-cs">${fN(c.plays)} plays · ${h < 1 ? `half of viewers are gone by ${fPct(h)} of the clip` : "more than half watch to the end"} · ${fPct(c.completeRate)} finish it.
     ${c.toCaseRate ? `${fPct(c.toCaseRate)} go on to open the case.` : ""}</p>`;
   t.innerHTML = table;
 }
@@ -386,9 +392,12 @@ const halfAt = r => { for(let i = 1; i < r.length; i++) if(r[i] < .5) return (i 
 /* ============ charts ============ */
 
 /* small helpers shared by every chart */
-function niceMax(v){ if(!(v > 0)) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p;
+/* a round step (1, 2, 2.5 or 5 a power of ten) that gives four or five
+   gridlines, and the top of the axis as a whole number of those steps */
+function niceStep(v){ const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p;
   return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; }
-const ticks = (max, n = 4) => Array.from({length: n + 1}, (_, i) => max / n * i);
+function niceMax(v){ if(!(v > 0)) return 1; const st = niceStep(v / 4); return Math.ceil(v / st - 1e-9) * st; }
+const ticks = max => { const st = niceStep(max / 4), out = []; for(let v = 0; v <= max + st / 1e6; v += st) out.push(v); return out; };
 const tbl = (head, rows) => `<table class="tbl"><thead><tr>${head.map((h, i) => `<th class="${i ? "num" : ""}">${h}</th>`).join("")}</tr></thead>
   <tbody>${rows.map(r => `<tr>${r.map((v, i) => `<td class="${i ? "num" : ""}">${v}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
 const tipRow = (color, value, label) => `<div class="vt-r"><i style="background:${color}"></i><b>${value}</b><span>${esc(label)}</span></div>`;
@@ -483,7 +492,7 @@ function raceChart(sm, W){
     cs.filter(c => d < c.cumulative.length).map(c => [c, c.cumulative[d] / c.goal]).sort((a, b) => b[1] - a[1])
       .map(([c, p]) => tipRow(sColor(c.c), fPct(p), short(c.title, 40))).join("")};
   const svg = `<svg class="an-svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Share of goal raised by days since listing, one line per case">
-    ${grid}${lines}<line class="xh-line" id="${id}-l" y1="${T}" y2="${T + ph}" x1="-9" x2="-9"/>${ends}
+    ${grid}${lines}<line class="xh-line" id="${id}-l" y1="${T}" y2="${T + ph}" x1="0" x2="0"/>${ends}
     <rect class="xh" data-xh="${id}" x="${L}" y="${T}" width="${pw}" height="${ph}"/></svg>`;
   const at = (c, d) => d < c.cumulative.length ? fPct(c.cumulative[d] / c.goal) : "—";
   return [svg, tbl(["Case", "Day 7", "Day 30", "Day 90", "Day 180", "Today", "Days live"],
@@ -495,7 +504,7 @@ function raceChart(sm, W){
    colour alone in a scatter, so the bubbles are grey and named, and take
    their case colour when pointed at. */
 function quadChart(sm, W){
-  const H = 320, L = 56, R = 16, T = 16, B = 40;
+  const H = 400, L = 56, R = 16, T = 16, B = 40;
   const pts = sm.cases.map(c => ({c, ax: Math.max(.01, c.attentionPerDay), mo: Math.max(1, c.moneyPerDay), n: c.totals.visitors}));
   if(!pts.length) return [`<div class="empty">No live cases.</div>`, ""];
   const lx = v => Math.log10(v), dom = (vs) => { const lo = Math.min(...vs), hi = Math.max(...vs); return [lx(lo) - .25, lx(hi) + .25]; };
@@ -510,12 +519,25 @@ function quadChart(sm, W){
     return out; };
   const maxN = Math.max(1, ...pts.map(p => p.n)), rad = n => 7 + Math.sqrt(n / maxN) * 15;
   const corner = (x, y, anchor, t) => `<text class="qd" x="${x}" y="${y}" text-anchor="${anchor}">${t}</text>`;
-  const bubbles = [...pts].sort((a, b) => b.n - a.n).map(p => { const cx = X(p.ax), cy = Y(p.mo), r = rad(p.n), right = cx + r + 6 + 120 < L + pw;
+  const circles = pts.map(p => [X(p.ax), Y(p.mo), rad(p.n)]), boxes = [];
+  const free = b => b[0] >= L && b[2] <= L + pw && b[1] >= T && b[3] <= T + ph
+    && !boxes.some(q => !(b[2] < q[0] || b[0] > q[2] || b[3] < q[1] || b[1] > q[3]))
+    && !circles.some(([cx, cy, r]) => cx + r > b[0] && cx - r < b[2] && cy + r > b[1] && cy - r < b[3]);
+  const place = (cx, cy, r, w) => {
+    const opts = [[cx + r + 6, cy + 4, "start"], [cx - r - 6, cy + 4, "end"], [cx, cy - r - 7, "middle"], [cx, cy + r + 15, "middle"]];
+    const box = ([x, y, a]) => { const x0 = a === "start" ? x : a === "end" ? x - w : x - w / 2; return [x0, y - 11, x0 + w, y + 3]; };
+    const inside = b => b[0] >= L && b[2] <= L + pw && b[1] >= T && b[3] <= T + ph;
+    /* somewhere clear, else somewhere on the chart at least */
+    const pick = opts.find(o => free(box(o))) || opts.find(o => inside(box(o))) || opts[1];
+    boxes.push(box(pick)); return pick;
+  };
+  const bubbles = [...pts].sort((a, b) => b.n - a.n).map(p => { const cx = X(p.ax), cy = Y(p.mo), r = rad(p.n), name = short(p.c.title, 26);
+    const [lx2, ly2, la] = place(cx, cy, r, name.length * 6.7);
     return `<g class="bub" style="--c:${sColor(p.c.c)}" ${tipAttr(`<div class="vt-h">${esc(p.c.title)}</div>` +
       tipRow(sColor(p.c.c), fUsd(p.mo) + "/day", "invested") + tipRow(sColor(p.c.c), Math.round(p.ax).toLocaleString() + " min/day", "attention") +
       tipRow(sColor(p.c.c), fPct(p.c.totals.conversion), "of visitors invest") + tipRow(sColor(p.c.c), fDur(p.c.totals.avgTimeSec), "average time on page"))}>
       <circle class="b-hit" cx="${cx}" cy="${cy}" r="${Math.max(14, r + 4)}"/><circle class="b" cx="${cx}" cy="${cy}" r="${r}"/>
-      <text class="b-l" x="${right ? cx + r + 6 : cx - r - 6}" y="${cy + 4}" text-anchor="${right ? "start" : "end"}">${esc(short(p.c.title, 24))}</text></g>`; }).join("");
+      <text class="b-l" x="${lx2}" y="${ly2}" text-anchor="${la}">${esc(name)}</text></g>`; }).join("");
   const svg = `<svg class="an-svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Attention per day against dollars per day, one bubble per case">
     ${decades(x0, x1, v => fN(v), "x")}${decades(y0, y1, fUsd, "y")}
     <line class="ref" x1="${X(mx)}" x2="${X(mx)}" y1="${T}" y2="${T + ph}"/><line class="ref" x1="${L}" x2="${L + pw}" y1="${Y(my)}" y2="${Y(my)}"/>
@@ -538,14 +560,14 @@ function retChart(c, W){
   const id = "xh" + (++AN.seq);
   XH[id] = {x0: L, x1: L + pw, n: 10, at: x, tip: i => `<div class="vt-h">${i === 0 ? "Start" : i * 10 + "% through"}${c.dur ? ` · ${fDur(c.dur * i / 10)}` : ""}</div>` +
     tipRow("var(--merit)", fPct(r[i]), "of plays still watching")};
-  const half = halfAt(r);
+  const half = halfAt(r), endBelow = y(r[10]) + 22 < T + ph;
   return [`<svg class="an-svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Share of viewers still watching through the clip">
     ${grid}<path class="area" d="${area}"/><polyline class="ln ret" points="${pts.map(p => p.join(",")).join(" ")}"/>
-    <circle class="dot" cx="${x(half * 10)}" cy="${y(.5)}" r="4.5" style="fill:var(--merit)"/>
-    <text class="dl-t" x="${x(half * 10) + 8}" y="${y(.5) - 8}">Half gone at ${fPct(half)}</text>
+    ${half < 1 ? `<circle class="dot" cx="${x(half * 10)}" cy="${y(.5)}" r="4.5" style="fill:var(--merit)"/>
+    <text class="dl-t" x="${x(half * 10) + (half > .7 ? -8 : 8)}" y="${y(.5) + 18}" text-anchor="${half > .7 ? "end" : "start"}">Half gone at ${fPct(half)}</text>` : ""}
     <circle class="dot" cx="${x(10)}" cy="${y(r[10])}" r="4.5" style="fill:var(--merit)"/>
-    <text class="dl-t" x="${x(10) - 8}" y="${y(r[10]) - 10}" text-anchor="end">${fPct(r[10])} reach the end</text>
-    <line class="xh-line" id="${id}-l" y1="${T}" y2="${T + ph}" x1="-9" x2="-9"/><rect class="xh" data-xh="${id}" x="${L}" y="${T}" width="${pw}" height="${ph}"/></svg>`,
+    <text class="dl-t" x="${x(10) - 8}" y="${endBelow ? y(r[10]) + 20 : y(r[10]) - 12}" text-anchor="end">${fPct(r[10])} reach the end</text>
+    <line class="xh-line" id="${id}-l" y1="${T}" y2="${T + ph}" x1="0" x2="0"/><rect class="xh" data-xh="${id}" x="${L}" y="${T}" width="${pw}" height="${ph}"/></svg>`,
     tbl(["Point in the clip", "Still watching"], r.map((v, i) => [i === 0 ? "Start" : i * 10 + "%", fPct(v)]))];
 }
 
@@ -572,7 +594,7 @@ function cumChart(model, c, W){
     ${proj != null ? `<line class="proj" style="stroke:${col}" x1="${x(n)}" y1="${y(cum[n])}" x2="${x(n + proj)}" y2="${y(c.goal)}"/>` : ""}
     <circle class="dot" cx="${x(n)}" cy="${y(cum[n])}" r="4.5" style="fill:${col}"/>
     <text class="dl-t" x="${x(n) + (proj != null ? -8 : 8)}" y="${y(cum[n]) - 10}" text-anchor="${proj != null ? "end" : "start"}">${fUsd(cum[n])} today</text>
-    <line class="xh-line" id="${id}-l" y1="${T}" y2="${T + ph}" x1="-9" x2="-9"/><rect class="xh" data-xh="${id}" x="${L}" y="${T}" width="${x(n) - L}" height="${ph}"/></svg>`,
+    <line class="xh-line" id="${id}-l" y1="${T}" y2="${T + ph}" x1="0" x2="0"/><rect class="xh" data-xh="${id}" x="${L}" y="${T}" width="${x(n) - L}" height="${ph}"/></svg>`,
     tbl(["Day", "Raised", "Of goal"], cum.map((v, d) => [d, v]).filter(([d]) => d % 7 === 0 || d === n).reverse()
       .map(([d, v]) => [dayLabel(dayAt(model, c.listedIdx + d), true), fUsd(v), fPct(v / c.goal)]))];
 }
@@ -624,7 +646,7 @@ function showTip(html, ev){
   if(y + r.height > innerHeight - 8) y = ev.clientY - r.height - pad;
   vtip.style.transform = `translate(${Math.max(8, x)}px,${Math.max(8, y)}px)`;
 }
-const hideTip = () => { vtip.classList.remove("on"); $$(".xh-line").forEach(l => { l.setAttribute("x1", -9); l.setAttribute("x2", -9); }); };
+const hideTip = () => { vtip.classList.remove("on"); $$(".xh-line.on").forEach(l => l.classList.remove("on")); };
 document.addEventListener("pointermove", ev => {
   const t = ev.target;
   if(!t || !t.closest || !t.closest(".an")) return hideTip();
@@ -635,7 +657,7 @@ document.addEventListener("pointermove", ev => {
     const lx = pt.matrixTransform(svg.getScreenCTM().inverse()).x;
     const i = Math.max(0, Math.min(k.n, Math.round((lx - k.x0) / (k.x1 - k.x0) * k.n)));
     const line = svg.getElementById(xh.dataset.xh + "-l");
-    if(line){ line.setAttribute("x1", k.at(i)); line.setAttribute("x2", k.at(i)); }
+    if(line){ line.setAttribute("x1", k.at(i)); line.setAttribute("x2", k.at(i)); line.classList.add("on"); }
     return showTip(k.tip(i), ev);
   }
   const tip = t.closest("[data-tip]");

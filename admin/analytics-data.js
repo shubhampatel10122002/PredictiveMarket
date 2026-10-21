@@ -25,9 +25,13 @@
    This file draws nothing and never touches the DOM: build() makes a
    model, and the functions below it answer questions about a date range.
    admin/analytics.js does the drawing.
+
+   Nothing is declared at the top level: the API is window.LJ_ANALYTICS
+   (module.exports under node), so no other script's declarations can
+   collide with this one's.
    ===================================================================== */
 
-const LJ_ANALYTICS = (() => {
+(function(){
   "use strict";
   const DAY = 864e5;
   const M   = ["visits","visitors","timeSec","plays","watchSec","completes","investOpens","pledges","amount","shares","comments"];
@@ -72,13 +76,16 @@ const LJ_ANALYTICS = (() => {
   function hash(s){ let h = 2166136261; for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
   function mulberry32(a){ return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
     t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-  const rng = (id, s) => mulberry32(hash(id + "␟" + s));
-  /* z: one draw, roughly a standard normal (a logistic with the same
-     spread, clipped at 3), which is all noise on a daily count needs */
-  const z = u => { const v = Math.log(u/(1 - u)) * .5513; return v < -3 ? -3 : v > 3 ? 3 : v; };
+  const rng = (id, s) => mulberry32(hash(id + "|" + s));   /* ASCII on purpose: the seed must not depend on how a page decodes this file */
+  /* a stream's first n draws, one per day from the listing day */
+  function uniforms(id, s, n){ const r = rng(id, s), o = new Float64Array(n); for(let i = 0; i < n; i++) o[i] = r(); return o; }
+  /* Uniform rather than log-normal: the same spread and a mean of exactly
+     1, never negative for the spreads used here (under .5), and no log or
+     exp per value, which matters when there are 30,000 of them to draw
+     before the page can show anything. */
   function wobble(id, s, n, sd){
-    const r = rng(id, s), o = new Float64Array(n), k = sd*sd/2;
-    for(let i = 0; i < n; i++) o[i] = Math.exp(sd*z(r()) - k);
+    const r = rng(id, s), o = new Float64Array(n), k = sd * 3.4641;   /* 2*sqrt(3)*sd: the width of a uniform with that sd */
+    for(let i = 0; i < n; i++) o[i] = 1 + k*(r() - .5);
     return o;
   }
 
@@ -140,15 +147,15 @@ const LJ_ANALYTICS = (() => {
        from the Watch feed, people who decide fast and give small. A quiet
        summer, then the court's September pause and the October hearing
        brought it back. */
-    "maple-evictions": {conv:.08, vr:1.24, time:66, play:3.4, invest:1.9, done:.44, share:.026, beta:.4,
-      src:{watch:31, player:3, cases:16, trending:15, link:17, mine:6, other:5}, run:70, lead:.8,
+    "maple-evictions": {conv:.08, vr:1.24, time:66, play:3.5, invest:1.9, done:.44, share:.026, beta:.4,
+      src:{watch:22, player:2, cases:18, trending:12, link:10, mine:6, other:5}, run:70, lead:.8,
       shape: t => burst(t, 820, 7.5, 1.6) + 7 + 14*Math.exp(-t/40)},
 
     /* Listed 14 Feb. No launch spike to speak of: a steady climb that
        steepens as the case moves, with bumps for the FOIA production
        (mid-March) and the filing (mid-June). People read it properly. */
     "asylum-backlog": {conv:.058, vr:1.36, time:142, play:2.3, invest:2.3, done:.56, share:.012, beta:.5,
-      src:{watch:12, player:4, cases:30, trending:22, link:13, mine:10, other:5}, run:30, lead:.85,
+      src:{watch:16, player:4, cases:30, trending:22, link:8, mine:10, other:5}, run:30, lead:.85,
       shape: t => burst(t, 50, 10, 2) + 34 + .3*t + 26*pulse(t, 27, 9) + 40*pulse(t, 118, 8) + 16*pulse(t, 152, 10)},
 
     /* Listed 3 Mar. Funding moves in steps, each one after coverage: the
@@ -156,7 +163,7 @@ const LJ_ANALYTICS = (() => {
        withheld permit files in September. Each spike brings a crowd that
        converts poorly, and leaves the base a little higher. */
     "riverside-water": {conv:.046, vr:1.3, time:104, play:2.0, invest:2.4, done:.5, share:.016, beta:.55,
-      src:{watch:10, player:4, cases:27, trending:17, link:28, mine:8, other:6},
+      src:{watch:12, player:4, cases:27, trending:17, link:16, mine:8, other:6},
       news:[[13, 2.4, 4], [124, 1.9, 5], [188, 1.6, 4]],
       shape: t => burst(t, 30, 9, 2) + 26*(1 + .45*step(t, 14) + .35*step(t, 125) + .2*step(t, 189)) * Math.exp(-t/230)},
 
@@ -164,7 +171,7 @@ const LJ_ANALYTICS = (() => {
        second half-year while discovery dragged, picked up when mediation
        began in May, and is now in a settlement-talks surge. */
     "transit-access": {conv:.05, vr:1.3, time:118, play:2.1, invest:2.2, done:.52, share:.014, beta:.5,
-      src:{watch:10, player:4, cases:33, trending:20, link:14, mine:12, other:7}, run:21, lead:.72,
+      src:{watch:13, player:4, cases:33, trending:20, link:8, mine:12, other:7}, run:21, lead:.72,
       shape: t => burst(t, 60, 14, 2) + 54*(1 - .62*step(t, 160, 25)) + 24*pulse(t, 152, 12) + 26*step(t, 232, 8)},
 
     /* Listed 9 Nov 2025. The slow burner: a small launch, small bumps when
@@ -172,7 +179,7 @@ const LJ_ANALYTICS = (() => {
        certified (June), and a long fade. Few visitors, short visits, low
        conversion, and almost nothing in the last month. */
     "farmworker-wages": {conv:.03, vr:1.22, time:74, play:1.6, invest:2.6, done:.33, share:.008, beta:.5,
-      src:{watch:7, player:3, cases:46, trending:6, link:16, mine:14, other:8},
+      src:{watch:10, player:3, cases:46, trending:6, link:8, mine:14, other:8},
       shape: t => burst(t, 40, 12, 2) + 30*Math.exp(-t/120) + 14*pulse(t, 122, 8) + 11*pulse(t, 213, 8) + 5*pulse(t, 272, 6) + .9},
 
     /* Listed 2 Aug. Watched, not funded: a strong launch, a bump when the
@@ -180,7 +187,7 @@ const LJ_ANALYTICS = (() => {
        district paused the rollout. The longest time on page and the best
        clip completion on the platform, and the worst conversion. */
     "school-facial-rec": {conv:.02, vr:1.3, time:173, play:2.5, invest:3, done:.66, share:.02, beta:.62,
-      src:{watch:15, player:4, cases:22, trending:18, link:26, mine:4, other:6},
+      src:{watch:16, player:4, cases:22, trending:18, link:18, mine:4, other:6},
       shape: t => burst(t, 110, 9, 1.5) + 14 + 22*pulse(t, 37, 6)}
   };
 
@@ -197,6 +204,12 @@ const LJ_ANALYTICS = (() => {
       shape: t => burst(t, 4 + 30*hot, tau, 1.6) + 1 + 1.2*Math.exp(-t/fade)};
   }
 
+  /* Every profile in one shape, so the day loops see one kind of object
+     (V8 throws away optimised code when a second shape turns up). */
+  const SRC0 = {watch: 0, player: 0, cases: 0, trending: 0, link: 0, mine: 0, other: 0};
+  const profile = p => ({conv: p.conv, vr: p.vr, time: p.time, play: p.play, invest: p.invest, done: p.done, share: p.share,
+    beta: p.beta ?? .5, run: p.run || 30, lead: p.lead || .8, news: arr(p.news), src: {...SRC0, ...p.src}, shape: p.shape});
+
   /* "+1,842 backers this week", "Settlement talks — 1,204 joined this week" */
   const weekCount = s => { const m = /(\d[\d,]*)/.exec(String(s || "")); return m ? +m[1].replace(/,/g, "") : null; };
 
@@ -212,161 +225,220 @@ const LJ_ANALYTICS = (() => {
 
   /* ---------------------------------------------------------------------
      The baseline for one case, written into its model arrays from its
-     listing day (o) to today (N-1).
+     listing day (o) to today (N-1). It runs in phases, each a small
+     function with one loop over the days: the pledges, the dollars on
+     them, the attention that produced them, where that attention came
+     from, and the clips it watched.
      --------------------------------------------------------------------- */
-  function baseline(x, o, N, d0, discussion){
-    const c = x.c, id = String(c.id), L = N - o; if(L <= 0) return;
-    const P = PROFILES[id] || derive(c, L), beta = P.beta ?? .5;
-    const B = Math.max(0, Math.round(+c.baseBackers || 0)), R = Math.max(0, Math.round(+c.baseRaised || 0));
-    const tr = c.trending && typeof c.trending === "object" ? c.trending : null, kind = tr && tr.kind;
+
+  /* Phase 1. sm is expected pledges per day before rounding; visitors,
+     invest opens and comments all hang off it, so they move together. Pl
+     is the pledges themselves, whole, adding up to baseBackers. m is
+     attention that money does not follow one for one: news brings a
+     crowd, and conversion falls as m^-beta while visits rise as m. */
+  function pledgesOf(c, id, P, L, d0, B){
+    const beta = P.beta, tr = c.trending && typeof c.trending === "object" ? c.trending : null, kind = tr && tr.kind;
     const spark = tr && arr(tr.spark).length ? arr(tr.spark).map(pos) : null;
     const W = Math.min(7, L), H = L - W, tail = i => spark[clamp(spark.length - W + i, 0, spark.length-1)];
-    const n7 = (kind === "backing" || kind === "talk") ? weekCount(tr.reason) : null, week = n7 != null || (kind === "news" && spark);
+    const n7 = (kind === "backing" || kind === "talk") ? weekCount(tr.reason) : null, week = n7 != null || (kind === "news" && !!spark);
 
-    /* m is attention that money does not follow one for one: news brings
-       a crowd, and conversion falls as m^-beta while visits rise as m. */
     const m = new Float64Array(L).fill(1);
-    for(const [at, h, w] of arr(P.news)) for(let t = at; t < L; t++) m[t] += h * pulse(t, at, w);
+    for(const [at, h, w] of P.news) for(let t = at; t < L; t++) m[t] += h * pulse(t, at, w);
     if(kind === "news" && spark){
       /* the quietest of the week's first four days is the level before the story broke */
       const s0 = Math.max(0, spark.length-7), lo0 = Math.min(...spark.slice(s0, s0 + 4)), lo = Number.isFinite(lo0) && lo0 > 0 ? lo0 : 1;
       for(let i = 0; i < W; i++) m[H+i] *= Math.max(1, tail(i)/lo);
     }
-
-    /* sm: expected pledges per day, before rounding. Visitors, invest opens
-       and comments all hang off it, so they move together. */
     const sm = new Float64Array(L);
-    for(let t = 0; t < L; t++) sm[t] = Math.max(1e-6, P.shape(t, L)) * (week && t >= H ? 1 : WEEK[(d0 + t + 4) % 7]) * Math.pow(m[t], 1 - beta);
+    for(let t = 0; t < L; t++) sm[t] = Math.max(1e-6, P.shape(t, L)) * (week && t >= H ? 1 : WEEK[(d0 + t + 4) % 7]) * (m[t] === 1 ? 1 : Math.pow(m[t], 1 - beta));
     const scale = (a, b, total) => { let s = 0; for(let t = a; t < b; t++) s += sm[t]; for(let t = a; t < b; t++) sm[t] = s > 0 ? sm[t]*total/s : 0; };
+    const noisy = (a, b) => { const n = wobble(id, "pledges", L, .14), w = new Float64Array(b - a); for(let t = a; t < b; t++) w[t-a] = sm[t]*n[t]; return w; };
 
-    const Pl = zeros(L), nP = wobble(id, "pledges", L, .14), wk = [];
-    let n7c = 0;
+    const Pl = zeros(L);
     if(n7 != null){
       /* The badge's number is exactly the last seven days, shaped by its
          sparkline. A case younger than a week can only show baseBackers. */
-      n7c = H > 0 ? Math.min(n7, B) : B;
+      const n7c = H > 0 ? Math.min(n7, B) : B, wk = [];
       const sw = Array.from({length: W}, (_, i) => spark ? tail(i) : 1), ss = sw.reduce((a, b) => a + b, 0);
       for(let i = 0; i < W; i++) wk.push(ss > 0 ? n7c * sw[i]/ss : n7c/W);
       if(H > 0){
         /* Bend the run-up so the day before the week sits at lead x its
-           first day. Closed form for k in sm*(1 + k*r), after rescaling. */
-        const Ht = B - n7c, run = Math.max(1, Math.min(P.run || 30, H)), target = (P.lead || .8) * wk[0];
+           first day: solve for k in sm*(1 + k*r), after rescaling. */
+        const Ht = B - n7c, run = Math.max(1, Math.min(P.run, H)), target = P.lead * wk[0];
         const r = t => { const u = (t - (H - 1 - run)) / run; return u > 0 ? u*u : 0; };
         let S0 = 0, S1 = 0; for(let t = 0; t < H; t++){ S0 += sm[t]; S1 += sm[t]*r(t); }
         const e0 = sm[H-1], den = Ht*e0 - target*S1;
         const k = Ht > 0 ? clamp(den > 0 ? (target*S0 - Ht*e0)/den : 40, -.85, 40) : 0;
         for(let t = 0; t < H; t++) sm[t] *= 1 + k*r(t);
         scale(0, H, Ht);
-        apportion(Ht, Float64Array.from({length: H}, (_, t) => sm[t]*nP[t]), Pl, 0);
+        apportion(Ht, noisy(0, H), Pl, 0);
       }
       for(let i = 0; i < W; i++) sm[H+i] = wk[i];
       apportion(n7c, wk, Pl, H);
     }else if(B > 0){
       scale(0, L, B);
-      apportion(B, Float64Array.from({length: L}, (_, t) => sm[t]*nP[t]), Pl, 0);
+      apportion(B, noisy(0, L), Pl, 0);
     }else{
-      /* Nobody has backed it yet. Give it the attention its "watching now"
-         count implies, and no money. */
+      /* Nobody has backed it yet: the attention its "watching now" count
+         implies, and no money. */
       scale(0, L, pos(c.watching) * 12 * P.conv);
     }
+    let smMean = 0; for(let t = 0; t < L; t++) smMean += sm[t];
+    return {m, sm, Pl, beta, smMean: smMean/L || 1};
+  }
 
-    /* Dollars ride on pledges. The first backers of a case give a little
-       more; a surge brings smaller, quicker pledges. */
-    let smMean = 0; for(let t = 0; t < L; t++) smMean += sm[t]; smMean = smMean/L || 1;
-    const nA = wobble(id, "avg", L, .1), aw = new Float64Array(L); let awS = 0;
+  /* Phase 2. Dollars ride on pledges, adding up to baseRaised. The first
+     backers of a case give a little more; a surge brings smaller, quicker
+     pledges. */
+  function dollarsOf(id, L, R, g){
+    const {Pl, sm, smMean} = g, nA = wobble(id, "avg", L, .1), aw = new Float64Array(L); let awS = 0;
     for(let t = 0; t < L; t++){ aw[t] = Pl[t] * (1 + .12*Math.exp(-t/30)) * Math.pow(Math.max(sm[t], 1e-9)/smMean, -.07) * nA[t]; awS += aw[t]; }
     if(!(awS > 0)){ aw.set(sm); if(!sm.some(v => v > 0)) aw.fill(1); }   /* money with no backers on record: spread it anyway */
-    const Am = apportion(R, aw, zeros(L));
+    return apportion(R, aw, zeros(L));
+  }
 
-    /* Attention, from pledges back through conversion. */
+  /* Phase 3. Attention, from pledges back through conversion, and the
+     comments: the discussion total the case page shows, spread half by
+     backing and half by traffic, since people argue as much as they give. */
+  function attentionOf(x, o, id, P, L, g, Am, B, discussion){
+    const {m, sm, Pl, beta} = g, X = x.m, V = new Float64Array(L);
     const nV = wobble(id, "visitors", L, .09), nR = wobble(id, "repeat", L, .04), nT = wobble(id, "time", L, .06),
           nPl = wobble(id, "plays", L, .07), nI = wobble(id, "invest", L, .1), nS = wobble(id, "shares", L, .22), nC = wobble(id, "comments", L, .25);
-    const X = x.m, V = zeros(L);
+    const XV = X.visits, XU = X.visitors, XT = X.timeSec, XP = X.plays, XI = X.investOpens, XL = X.pledges, XA = X.amount, XS = X.shares;
     let svS = 0, smS = 0;
     for(let t = 0; t < L; t++){
-      const i = o + t, conv = P.conv * Math.pow(m[t], -beta);
-      const v = V[t] = Math.max(Pl[t], Math.round(sm[t]/conv * nV[t])), vis = Math.max(v, Math.round(v * P.vr * nR[t]));
-      X.visitors[i] = v; X.visits[i] = vis;
-      X.timeSec[i] = Math.round(vis * P.time * Math.pow(m[t], -.05) * nT[t]);
-      X.plays[i] = Math.round(vis * P.play * nPl[t]);
-      X.investOpens[i] = Math.max(Pl[t], Math.round(sm[t] * P.invest * nI[t]));
-      X.pledges[i] = Pl[t]; X.amount[i] = Am[t];
-      X.shares[i] = Math.round(v * P.share * Math.pow(m[t], .3) * nS[t]);
+      const i = o + t, mt = m[t], conv = mt === 1 ? P.conv : P.conv * Math.pow(mt, -beta);
+      const v = Math.max(Pl[t], Math.round(sm[t]/conv * nV[t])), vis = Math.max(v, Math.round(v * P.vr * nR[t]));
+      V[t] = v; XU[i] = v; XV[i] = vis;
+      XT[i] = Math.round(vis * P.time * (mt === 1 ? 1 : Math.pow(mt, -.05)) * nT[t]);
+      XP[i] = Math.round(vis * P.play * nPl[t]);
+      XI[i] = Math.max(Pl[t], Math.round(sm[t] * P.invest * nI[t]));
+      XL[i] = Pl[t]; XA[i] = Am[t];
+      XS[i] = Math.round(v * P.share * (mt === 1 ? 1 : Math.pow(mt, .3)) * nS[t]);
       svS += v; smS += sm[t];
     }
-    /* Comments: the discussion total the case page shows, spread half by
-       backing and half by traffic, since people argue as much as they give. */
     const dt = discussion && discussion[id] && +discussion[id].total;
-    const CT = Number.isFinite(dt) && dt >= 0 ? Math.round(dt) : Math.round(B * .55);
-    const cw = Float64Array.from({length: L}, (_, t) => ((smS ? sm[t]/smS : 0) + (svS ? V[t]/svS : 0)) * nC[t]);
-    const Cm = apportion(CT, cw, zeros(L));
-    for(let t = 0; t < L; t++) X.comments[o+t] = Cm[t];
+    const CT = Number.isFinite(dt) && dt >= 0 ? Math.round(dt) : Math.round(B * .55), cw = new Float64Array(L);
+    for(let t = 0; t < L; t++) cw[t] = ((smS ? sm[t]/smS : 0) + (svS ? V[t]/svS : 0)) * nC[t];
+    apportion(CT, cw, X.comments, o);
+  }
 
-    /* Where visits came from. Trending exposure follows how hot the case
-       is; news brings links; "mine" is backers coming back, so it grows
-       with the number of backers so far. */
-    const S = P.src, rs = rng(id, "sources"), sw7 = new Float64Array(7), part = zeros(7), VV = VIA.map(k => x.via[k]), XV = X.visits;
+  /* Phase 4. Where visits came from. Trending exposure follows how hot
+     the case is; news brings links; "mine" is backers coming back, so it
+     grows with the number of backers so far. */
+  function sourcesOf(x, o, id, P, L, g, B){
+    const {m, sm, Pl, smMean} = g, S = P.src, nu = uniforms(id, "sources", L), sw = new Float64Array(7), part = zeros(7);
+    const VV = VIA.map(k => x.via[k]), XV = x.m.visits;
     let cum = 0;
     for(let t = 0; t < L; t++){
-      const hot = sm[t]/smMean, u = rs(); cum += Pl[t];
-      sw7[0] = S.watch; sw7[1] = S.player; sw7[2] = S.cases; sw7[3] = S.trending * clamp(Math.sqrt(hot), .4, 1.8);
-      sw7[4] = S.link * (m[t] === 1 ? 1 : Math.pow(m[t], .9)); sw7[5] = S.mine * (.35 + (B ? cum/B : 0)); sw7[6] = S.other;
-      for(let k = 0; k < 7; k++) sw7[k] *= .9 + .2*((u * (k*7919 + 104729)) % 1);   /* seven wobbles from one draw */
-      apportion(XV[o+t], sw7, part, 0, (u * 15485863) % 1);
-      for(let k = 0; k < 7; k++) VV[k][o+t] = part[k];
+      const h = Math.sqrt(sm[t]/smMean); cum += Pl[t];
+      sw[0] = S.watch; sw[1] = S.player; sw[2] = S.cases; sw[3] = S.trending * (h < .4 ? .4 : h > 1.8 ? 1.8 : h);
+      sw[4] = S.link * (m[t] === 1 ? 1 : Math.pow(m[t], .9)); sw[5] = S.mine * (.35 + (B ? cum/B : 0)); sw[6] = S.other;
+      sourceDay(sw, part, VV, o + t, XV[o+t], nu[t]);
     }
+  }
+  /* The same unbiased rounding as the clips, with the cases list, the one
+     steady source, taking what is left. Seven small wobbles come from the
+     day's one draw. */
+  function sourceDay(sw, part, VV, i, all, u){
+    let s = 0, left = all;
+    for(let k = 0; k < 7; k++){ const a = u * (k*7919 + 104729); s += sw[k] *= .9 + .2*(a - Math.floor(a)); }
+    for(let k = 0; k < 7; k++) if(k !== 2){ const a = u * (k*15485863 + 7919), p = Math.floor(all * sw[k] / s + a - Math.floor(a)); part[k] = p; left -= p; }
+    if(left >= 0) part[2] = left; else apportion(all, sw, part, 0, u);
+    for(let k = 0; k < 7; k++) VV[k][i] = part[k];
+  }
 
-    /* Clips. The hero takes the largest share of plays and later clips
-       less, except one, picked by the seed, that clearly outperforms:
-       more plays than its place suggests, better completion, and more
-       people going on to the case. A visit that came from the Watch feed
-       or the player came from some reel, so the clips' toCase adds up to
-       those two sources exactly. */
+  /* Phase 5. Clips. The hero takes the largest share of plays and later
+     clips less, except one, picked by the seed, that clearly outperforms:
+     more plays than its place suggests, better completion, and more
+     people going on to the case. A visit that came from the Watch feed or
+     the player came from some reel, so the clips' toCase adds up to those
+     two sources exactly. Returns plays per clip, to weight retention. */
+  const KIND = {file:1.06, card:.96, embed:.78};
+  function clipsOf(x, o, id, P, L){
     const rc = rng(id, "clips"), K = x.clips.length, star = K > 1 ? 1 + Math.floor(rc() * (K - 1)) : 0;
-    const KIND = {file:1.06, card:.96, embed:.78};
-    const sh = [], q = [], wf = [], rw = [], iw = [], rep = [], rets = [];
+    const sh = [], q = [], dw = [], rw = [], iw = [], rep = [], rets = [];
+    /* A case's reels send on (watch + player visits) / plays of their plays
+       on average; no clip is let past about 12%, however good. */
+    const S = P.src, sS = S.watch + S.player + S.cases + S.trending + S.link + S.mine + S.other;
+    const rwMax = Math.max(1, .118 / Math.max(1e-9, (S.watch + S.player) / (sS || 1) / P.play));
     x.clips.forEach((cl, k) => {
-      let s = k === 0 ? 1 : .62 * Math.pow(.8, k-1) * (.85 + .3*rc());
-      if(k === star && k > 0) s = Math.min(.9, s * 1.75);
-      const qk = clamp(P.done * KIND[cl.kind] * Math.pow(60/cl.dur, .2) * (.9 + .2*rc()) + (k === star && k > 0 ? .1 : 0), .2, .75);
+      const lead = k === star && k > 0;
+      const s = k === 0 ? 1 : .62 * Math.pow(.8, k-1) * (.85 + .3*rc());
+      const qk = clamp(P.done * KIND[cl.kind] * Math.pow(60/cl.dur, .2) * (.9 + .2*rc()) + (lead ? .1 : 0), .2, .75);
       /* An early drop (people who swiped on), then steady decay, then a
          last small drop before the end. Embeds lose more up front. */
-      const e = clamp(.1 + .18*(1 - qk) + (cl.kind === "embed" ? .05 : 0), .08, .3);
-      const lam = -Math.log(qk / (.93 * (1 - e))) / .9;
+      const e = clamp(.1 + .18*(1 - qk) + (cl.kind === "embed" ? .05 : 0), .08, .3), lam = -Math.log(qk / (.93 * (1 - e))) / .9;
       const ret = Array.from({length: 11}, (_, j) => j === 0 ? 1 : (1 - e) * Math.exp(-lam * (j/10 - .1)) * (j === 10 ? .93 : 1));
-      let a = 0; for(let j = 0; j < 10; j++) a += (ret[j] + ret[j+1])/2/10;
-      sh.push(s); q.push(qk); wf.push(a); rets.push(ret); rep.push(1.12 + .25*qk);
-      rw.push((k === star && k > 0 ? 1.75 : 1) * (.85 + .3*rc())); iw.push(.8 + .4*rc());
+      let a = 0; for(let j = 0; j < 10; j++) a += (ret[j] + ret[j+1])/20;
+      sh.push(lead ? Math.min(.9, s * 1.75) : s); q.push(qk); dw.push(cl.dur * a); rets.push(ret); rep.push(1.12 + .25*qk);
+      rw.push(Math.min(rwMax, (lead ? 1.5 : 1) * (.9 + .2*rc()))); iw.push(.85 + .3*rc());
     });
-    const rr = x.clips.map((_, k) => rng(id, "clip" + k)), pw = new Float64Array(K), cp = zeros(K), tw = new Float64Array(K), tp = zeros(K), ti = zeros(K);
-    const synth = zeros(K), ru = rng(id, "split");
+    /* Pass 1, day by day: the two splits that must add up exactly, plays
+       to the case's plays and toCase to its Watch and player visits. Each
+       later clip's part is rounded up or down at random in proportion to
+       its fraction, which is unbiased, and the hero, always the largest,
+       takes what is left; only a day too small for that falls back to
+       apportion(). The draws are kept in nz for pass 2. */
+    const nz = x.clips.map((_, k) => uniforms(id, "clip" + k, L)), nu = uniforms(id, "split", L), sp = {pw: new Float64Array(K), tw: new Float64Array(K), cp: zeros(K), ct: zeros(K)};
+    const col = k => x.clips.map(cl => cl.m[k]), cP = col("plays"), cT = col("toCase");
+    const X = x.m, XP = X.plays, XI = X.investOpens, XV = X.visits, XW = X.watchSec, XC = X.completes, wa = x.via.watch, pa = x.via.player;
+    for(let t = 0; t < L; t++){ const i = o + t; splitDay(sp, K, t, i, nu[t], XP[i], wa[i] + pa[i], sh, rw, nz, cP, cT); }
+    /* Pass 2, clip by clip: everything else follows from a clip's own
+       plays and that day's draw. A clip watched further is finished more
+       often, so watch time and completions move together. Invest opens
+       from a reel are the case's invest opens in the same proportion as
+       its visits from reels, rounded without bias; they answer to no
+       published total, so they need not add up. */
+    const ir = new Float64Array(L);
+    for(let t = 0; t < L; t++) ir[t] = XV[o+t] > 0 ? XI[o+t] / XV[o+t] : 0;
+    const synth = x.clips.map((cl, k) => clipDays(cl.m, nz[k], ir, XW, XC, o, L, dw[k], q[k], 1/rep[k], iw[k]));
+    return {rets, synth};
+  }
+  /* one day's two splits (pass 1); on its own so the engine optimises it early */
+  function splitDay(sp, K, t, i, u, all, toC, sh, rw, nz, cP, cT){
+    const {pw, tw, cp, ct} = sp;
+    let sw = 0, st = 0, left = all;
+    for(let k = 0; k < K; k++) sw += pw[k] = sh[k] * (.72 + .56*nz[k][t]);
+    for(let k = 1; k < K; k++){ const r = nz[k][t] * 7919, p = Math.floor(all * pw[k] / sw + r - Math.floor(r)); cp[k] = p; left -= p; }
+    if(left >= 0) cp[0] = left; else apportion(all, pw, cp, 0, u);
+    for(let k = 0; k < K; k++){ cP[k][i] = cp[k]; st += tw[k] = cp[k] * rw[k]; }
+    left = toC;
+    for(let k = 1; k < K; k++){ const r = nz[k][t] * 104729, c = st > 0 ? Math.floor(toC * tw[k] / st + r - Math.floor(r)) : 0; ct[k] = c; left -= c; }
+    if(left >= 0) ct[0] = left; else apportion(toC, tw, ct, 0, u);
+    for(let k = 0; k < K; k++) cT[k][i] = ct[k];
+  }
+  /* one clip's days; small and on its own so the engine optimises it early */
+  function clipDays(m, z_, ir, XW, XC, o, L, dk, qk, rk, ik){
+    const p_ = m.plays, v_ = m.viewers, w_ = m.watchSec, c_ = m.completes, t_ = m.toCase, i_ = m.toInvest;
+    let n = 0;
     for(let t = 0; t < L; t++){
-      const i = o + t, u1 = ru(), u2 = ru(), u3 = ru();
-      for(let k = 0; k < K; k++){ const r = rr[k]; pw[k] = sh[k] * Math.exp(.16*((r()+r()+r()-1.5)*2)); }
-      apportion(X.plays[i], pw, cp, 0, u1);
-      const toC = x.via.watch[i] + x.via.player[i], toI = Math.min(X.investOpens[i], Math.round(X.investOpens[i] * ratio(toC, X.visits[i])));
-      for(let k = 0; k < K; k++) tw[k] = cp[k] * rw[k];
-      apportion(toC, tw, tp, 0, u2);
-      for(let k = 0; k < K; k++) tw[k] = cp[k] * rw[k] * iw[k];
-      apportion(toI, tw, ti, 0, u3);
-      let ws = 0, cs = 0;
-      for(let k = 0; k < K; k++){
-        const cl = x.clips[k], r = rr[k], p = cp[k], u1 = r(), u2 = r(), u3 = r();
-        const watch = Math.round(p * cl.dur * wf[k] * (.9 + .2*u2)), done = Math.min(p, Math.round(p * q[k] * (.9 + .2*u3)));
-        cl.m.plays[i] = p; cl.m.viewers[i] = p ? clamp(Math.round(p / rep[k] * (.95 + .1*u1)), 1, p) : 0;
-        cl.m.watchSec[i] = watch; cl.m.completes[i] = done; cl.m.toCase[i] = tp[k]; cl.m.toInvest[i] = ti[k];
-        ws += watch; cs += done; synth[k] += p;
-      }
-      X.watchSec[i] = ws; X.completes[i] = cs;
+      const i = o + t, p = p_[i]; if(!p) continue;
+      const v = z_[t], c = v * 15485863, watch = Math.round(p * dk * (.92 + .16*v)), d = Math.round(p * qk * (.94 + .12*v)), vv = Math.round(p * rk * (1.04 - .08*v));
+      const done = d < p ? d : p;
+      v_[i] = vv < 1 ? 1 : vv > p ? p : vv; w_[i] = watch; c_[i] = done;
+      i_[i] = Math.floor(t_[i] * ik * ir[t] + c - Math.floor(c));
+      XW[i] += watch; XC[i] += done; n += p;
     }
-    x.clips.forEach((cl, k) => { cl._ret = rets[k]; cl._n = synth[k]; });
+    return n;
+  }
+
+  function baseline(x, o, N, d0, discussion){
+    const c = x.c, id = x.id, L = N - o; if(L <= 0) return null;
+    const P = profile(PROFILES[id] || derive(c, L));
+    const B = Math.max(0, Math.round(+c.baseBackers || 0)), R = Math.max(0, Math.round(+c.baseRaised || 0));
+    const g = pledgesOf(c, id, P, L, d0, B);
+    attentionOf(x, o, id, P, L, g, dollarsOf(id, L, R, g), B, discussion);
+    sourcesOf(x, o, id, P, L, g, B);
+    return clipsOf(x, o, id, P, L);
   }
 
   /* ---------------------------------------------------------------------
      build(opts) → the model. See the contract at the end of this file.
      --------------------------------------------------------------------- */
   function build(opts={}){
-    const now = opts.now instanceof Date && Number.isFinite(opts.now.getTime()) ? opts.now : new Date();
+    const asked = opts.now == null ? null : opts.now instanceof Date ? opts.now : new Date(opts.now);
+    const now = asked && Number.isFinite(asked.getTime()) ? asked : new Date();
     const today = dayNum(now), demo = opts.demo !== false, real = opts.real && typeof opts.real === "object" ? opts.real : null;
     const cats = opts.cats || (typeof CATS !== "undefined" ? CATS : globalThis.CATS) || {};
     const discussion = opts.discussion || (typeof DISCUSSION !== "undefined" ? DISCUSSION : globalThis.DISCUSSION) || {};
@@ -376,20 +448,23 @@ const LJ_ANALYTICS = (() => {
     /* The listing day: the case's own "vetted" date when it reads as a
        date, else the admin's override, else sixty days ago. vetted comes
        first so that saving an edited demo case (a new row, a new
-       created_at) cannot move its history. Never later than today. */
+       created_at) cannot move its history. Never later than today, and
+       never more than five years back: "2002" for "2026" would otherwise
+       quietly build twenty-four years of days for every case. */
     const lday = cs.map(c => {
       let d = dayNum(c.vetted); if(!sane(d)) d = dayNum(listed[c.id]); if(!sane(d)) d = today - 60;
-      return Math.min(d, today);
+      return clamp(d, today - 1826, today);
     });
     const start = cs.length ? Math.min(...lday) : today, N = today - start + 1;
     const days = Array.from({length: N}, (_, i) => iso(start + i));
 
+    const syn = [];   /* per case: the baseline's retention curves and plays per clip */
     const cases = cs.map((c, j) => {
       const cat = cats[c.cat];
       const x = {id: String(c.id), c, title: c.title || c.head || String(c.id), color: cat && cat.color || "#5B6675", listedIdx: lday[j] - start,
         m: Object.fromEntries(M.map(k => [k, zeros(N)])), via: Object.fromEntries(VIA.map(k => [k, zeros(N)])),
         clips: reels(c).map(r => ({...r, m: Object.fromEntries(CM.map(k => [k, zeros(N)])), retention: null}))};
-      if(demo) baseline(x, x.listedIdx, N, lday[j], discussion);
+      syn.push(demo ? baseline(x, x.listedIdx, N, lday[j], discussion) : null);
       return x;
     });
 
@@ -444,19 +519,20 @@ const LJ_ANALYTICS = (() => {
 
     /* A clip's retention is one curve: the baseline's, weighted by its
        plays, blended with real reach, weighted by real plays. */
-    for(const x of cases) for(const cl of x.clips){
-      const sn = demo && cl._ret ? cl._n : 0, rl = reach.get(cl) || {n: 0, r: zeros(10)}, n = sn + rl.n;
-      cl.retention = Array.from({length: 11}, (_, j) => j === 0 ? 1 : n > 0 ? clamp((sn * cl._ret[j] + rl.r[j-1]) / n, 0, 1) : 0);
-      delete cl._ret; delete cl._n;
-    }
+    cases.forEach((x, j) => x.clips.forEach((cl, k) => {
+      const s = syn[j], sn = s ? s.synth[k] : 0, sr = s && s.rets[k], rl = reach.get(cl) || {n: 0, r: zeros(10)}, n = sn + rl.n;
+      cl.retention = Array.from({length: 11}, (_, i) => i === 0 ? 1 : n > 0 ? clamp(((sn ? sn * sr[i] : 0) + rl.r[i-1]) / n, 0, 1) : 0);
+    }));
 
     /* The feed of real things that happened, newest first. */
     const t = v => { const n = Date.parse(v); return Number.isFinite(n) ? n : 0; };
+    /* the same rule as the counts: a known case, on a day inside the history */
+    const keep = (r, at) => r && byId.has(String(r.case_id)) && row({case_id: r.case_id, d: at});
     const recent = [
-      ...arr(real && real.recent).filter(r => r && byId.has(String(r.case_id))).map(r => ({...r})),
-      ...arr(opts.pledges).filter(p => p && byId.has(String(p.case_id))).map(p => ({at: p.created_at, kind: "pledge", case_id: p.case_id,
+      ...arr(real && real.recent).filter(r => keep(r, r.at)).map(r => ({...r})),
+      ...arr(opts.pledges).filter(p => keep(p, p.created_at)).map(p => ({at: p.created_at, kind: "pledge", case_id: p.case_id,
         clip: null, via: null, seconds: null, pct: null, actor_id: p.actor_id ?? null, amount: pos(p.amount), name: p.display_name ?? null})),
-      ...arr(opts.comments).filter(cm => cm && byId.has(String(cm.case_id))).map(cm => ({at: cm.created_at, kind: "comment", case_id: cm.case_id,
+      ...arr(opts.comments).filter(cm => keep(cm, cm.created_at)).map(cm => ({at: cm.created_at, kind: "comment", case_id: cm.case_id,
         clip: null, via: null, seconds: null, pct: null, actor_id: cm.actor_id ?? null, name: cm.name ?? null}))
     ].sort((a, b) => t(b.at) - t(a.at)).slice(0, 40);
 
@@ -514,7 +590,7 @@ const LJ_ANALYTICS = (() => {
          before it existed. */
       const liveIn = Math.max(0, b - Math.max(a, o) + 1), attentionMin = (totals.watchSec + totals.timeSec)/60;
       return {id: x.id, title: x.title, color: x.color, c: x.c, listedIdx: o, daysLive, totals, prev: pv,
-        raised, backers, goal, fundedPct: raised/goal*100, velocity7, velocityPrev, momentum, trend, milestones, etaDays,
+        raised, backers, goal, fundedPct: raised/goal, velocity7, velocityPrev, momentum, trend, milestones, etaDays,
         attentionMin, attentionPerDay: ratio(attentionMin, liveIn), moneyPerDay: ratio(totals.amount, liveIn),
         cumulative, spark: Array.from({length: 14}, (_, k) => { const i = b - 13 + k; return i >= 0 ? A[i] : 0; })};
     });
@@ -558,8 +634,8 @@ const LJ_ANALYTICS = (() => {
      its numbers, ranked. Every candidate is scored; at most two per case
      make the cut so one busy case cannot fill the list.
      --------------------------------------------------------------------- */
-  const NF = new Intl.NumberFormat("en-US");
-  const int = n => NF.format(Math.round(n));
+  /* thousands by hand: an Intl.NumberFormat costs ~15ms to build on first load, for commas */
+  const int = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   const money = n => n >= 1e6 ? "$" + (n/1e6).toFixed(2).replace(/0$/, "").replace(/\.0$/, "") + "M"
     : n >= 1e5 ? "$" + Math.round(n/1e3) + "k" : n >= 1e3 ? "$" + int(Math.round(n/100)*100) : "$" + int(n);
   const pct = x => x < .1 ? (x*100).toFixed(1) + "%" : Math.round(x*100) + "%";
@@ -600,21 +676,21 @@ const LJ_ANALYTICS = (() => {
 
     /* Live longest, funded least: what is taking a long time. */
     const medLive = median(cs.map(x => x.daysLive));
-    const lag = cs.filter(x => x.daysLive >= Math.max(90, medLive) && x.fundedPct < 60).sort((p, q) => p.fundedPct - q.fundedPct)[0];
+    const lag = cs.filter(x => x.daysLive >= Math.max(90, medLive) && x.fundedPct < .6).sort((p, q) => p.fundedPct - q.fundedPct)[0];
     if(lag){
       const pace = lag.spark.reduce((s, v) => s + v, 0) / 14;
       push(80, "warn", lag.id, "Slowest to fund, longest live",
-        `${lag.title} has been live ${lag.daysLive} days and is ${Math.round(lag.fundedPct)}% funded. ` +
+        `${lag.title} has been live ${lag.daysLive} days and is ${Math.round(lag.fundedPct*100)}% funded. ` +
         (lag.etaDays ? `At the last fortnight's pace of ${money(pace)} a day it would take ${howLong(lag.etaDays)} to reach its goal.`
           : `It has raised nothing in the last fortnight.`) + ` A new clip or a case update is the obvious lever.`);
     }
 
     /* Close to the goal: get the next step ready. */
-    const near = cs.filter(x => x.fundedPct >= 80 && x.fundedPct < 100 && x.etaDays != null && x.etaDays <= 45).sort((p, q) => p.etaDays - q.etaDays);
+    const near = cs.filter(x => x.fundedPct >= .8 && x.fundedPct < 1 && x.etaDays != null && x.etaDays <= 45).sort((p, q) => p.etaDays - q.etaDays);
     near.forEach((f, i) => {
       const nx = near.find(x => x !== f), days = d => `${d} day${d === 1 ? "" : "s"}`;
       push(76 - i, "good", f.id, "Close to fully funded",
-        `${f.title} is ${Math.floor(f.fundedPct)}% funded and, at the last fortnight's pace, closes the remaining ${money(f.goal - f.raised)} in about ${days(f.etaDays)}` +
+        `${f.title} is ${Math.floor(f.fundedPct*100)}% funded and, at the last fortnight's pace, closes the remaining ${money(f.goal - f.raised)} in about ${days(f.etaDays)}` +
         (nx ? `; ${nx.title} is about ${days(nx.etaDays)} out.` : ".") + ` Have the funded update for backers ready.`);
     });
 
@@ -633,13 +709,13 @@ const LJ_ANALYTICS = (() => {
       `${slow.title} raised ${money(slow.velocity7)} in the last 7 days, ${Math.round((1 - slow.momentum)*100)}% below its weekly average for the four weeks before.`);
 
     /* Stalled but not old enough to be the laggard above. */
-    const stall = cs.filter(x => x.trend === "stalled" && (!lag || x.id !== lag.id) && x.fundedPct < 100).sort((p, q) => q.daysLive - p.daysLive)[0];
+    const stall = cs.filter(x => x.trend === "stalled" && (!lag || x.id !== lag.id) && x.fundedPct < 1).sort((p, q) => q.daysLive - p.daysLive)[0];
     if(stall) push(62, "warn", stall.id, "Stalled",
-      `${stall.title} raised ${money(stall.velocity7)} in the last 7 days, under a quarter of a percent of its goal. It is ${Math.round(stall.fundedPct)}% funded after ${stall.daysLive} days.`);
+      `${stall.title} raised ${money(stall.velocity7)} in the last 7 days, under a quarter of a percent of its goal. It is ${Math.round(stall.fundedPct*100)}% funded after ${stall.daysLive} days.`);
 
     /* Converts well, seen too little: worth promoting. */
     const medVis = median(busy.map(x => x.totals.visitors));
-    const quiet = busy.filter(x => x.totals.visitors < medVis && x.totals.conversion >= 1.15 * P.conversion && x.fundedPct < 90)
+    const quiet = busy.filter(x => x.totals.visitors < medVis && x.totals.conversion >= 1.15 * P.conversion && x.fundedPct < .9)
       .sort((p, q) => q.totals.conversion - p.totals.conversion)[0];   /* promoting a case about to fill helps nobody */
     if(quiet) push(60, "info", quiet.id, "Converts well, seen too little",
       `${quiet.title} turns ${pct(quiet.totals.conversion)} of visitors into backers, above the platform's ${pct(P.conversion)}, but drew only ${pct(ratio(quiet.totals.visitors, P.visitors))} of the platform's visitors in this period. A place on the trending rail or earlier in Watch should pay back.`);
@@ -684,15 +760,15 @@ const LJ_ANALYTICS = (() => {
     return picked.map(({score, group, ...it}) => it);
   }
 
-  return {build, summarize, clipStats, sources, funnel, insights, METRICS: M, SOURCES: VIA, dayNum, iso};
+  /* Contract, for admin/analytics.js:
+     build({cases, listed?, now?, demo?, cats?, discussion?, real?, pledges?, comments?}) →
+       {now, today, days, demo, realEvents, realPledges, realComments, recent,
+        cases:[{id, c, title, color, listedIdx, m:{…11 daily arrays}, via:{…7 daily arrays},
+                clips:[{key, title, kind, dur, m:{plays, viewers, watchSec, completes, toCase, toInvest}, retention}]}]}
+     summarize(model, from, to), clipStats(model, caseId|null, from, to),
+     sources(model, caseId|null, from, to), funnel(model, caseId|null, from, to), insights(summary).
+     METRICS and SOURCES are the key lists; dayNum and iso convert days. */
+  const LJ_ANALYTICS = {build, summarize, clipStats, sources, funnel, insights, METRICS: M, SOURCES: VIA, dayNum, iso};
+  if(typeof window !== "undefined") window.LJ_ANALYTICS = LJ_ANALYTICS;
+  if(typeof module !== "undefined" && module.exports) module.exports = LJ_ANALYTICS;
 })();
-
-/* Contract, for admin/analytics.js:
-   build({cases, listed?, now?, demo?, cats?, discussion?, real?, pledges?, comments?}) →
-     {now, today, days, demo, realEvents, realPledges, realComments, recent,
-      cases:[{id, c, title, color, listedIdx, m:{…11 daily arrays}, via:{…7 daily arrays},
-              clips:[{key, title, kind, dur, m:{plays, viewers, watchSec, completes, toCase, toInvest}, retention}]}]}
-   summarize(model, from, to), clipStats(model, caseId|null, from, to),
-   sources(model, caseId|null, from, to), funnel(model, caseId|null, from, to), insights(summary). */
-if(typeof window !== "undefined") window.LJ_ANALYTICS = LJ_ANALYTICS;
-if(typeof module !== "undefined" && module.exports) module.exports = LJ_ANALYTICS;

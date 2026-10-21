@@ -197,6 +197,7 @@ carries its own words. The beats stay in the data as the written version.
 sign-in. It is where cases, clips and video go in.
 
 - **Overview**: live cases, clips still waiting for video, the latest pledges and comments
+- **Analytics**: how every case is doing on attention and on money. See *The analytics page* below
 - **Cases**: every case, demo and new. The editor covers everything the case page
   shows, with the site's own score dial, waterfall, bloom and runway redrawn as
   you type, and a Raw data tab for anything the form does not cover
@@ -254,6 +255,50 @@ Every row carries the same `actor_id` as pledges and comments, `d:<random>`
 for a browser and `u:<uuid>` for an account, and nothing else about the
 person. The browser can only insert into `events`: no reads, edits or
 deletes, and only the publishable key is sent.
+
+## The analytics page
+
+`/admin/#/analytics`, and `/admin/#/analytics/<case>` for one case. One row of
+filters scopes everything: 7, 30 or 90 days or all time, compared with the
+period before.
+
+- **KPI row**: invested, new backers, case visits, clip plays, watch time, and
+  visit-to-investment conversion
+- **Money invested per day**, stacked by case (by week past three months)
+- **What stands out**: plain-English findings worked out from the numbers, such
+  as the fastest case to half funded, a case people watch but rarely back, the
+  case furthest from its goal at its current pace, a clip that sends unusually
+  many people on to its case
+- **Attention against money**: minutes spent per day against dollars per day,
+  split at the medians into watched and funded, watched not funded, funded
+  quietly, and not landing yet
+- **Cases**: a sortable leaderboard with funded %, money and backers in the
+  period, visits, conversion, time on page, watch time, the last 14 days'
+  trend, and how long until fully funded at the current pace
+- **Funding race** (share of goal by days since listing) and **days to half
+  funded**: which cases filled fast and which never got going
+- **Clips**: plays, average watch, completion, click-through to the case and to
+  invest, and a drop-off curve showing where viewers stop
+- **From clip to investment** (plays, visits, invest opened, invested),
+  **where visits come from**, and a **live feed** of real events
+
+Every chart has a Table button with the same numbers. One case on its own adds
+money raised against its goal with the recent pace projected, its funding
+milestones, and daily visits and money.
+
+**Demo history.** The platform has few real users yet, so `admin/analytics-data.js`
+builds a believable daily history for every case from listing day to today, out
+of the case's own numbers: it adds up exactly to `baseRaised` and `baseBackers`,
+the last week matches the trending badge ("+4,106 backers this week"), and each
+demo case has a story (maple-evictions went viral, farmworker-wages is the slow
+burner, school-facial-rec is watched but not funded). Real tracked activity,
+real pledges and real comments are added on top, the same way the site adds
+real pledges to `baseRaised`. Untick **Include demo history** to see real
+activity only, which is how to check tracking works. The history is seeded per
+case, so it is the same on every load.
+
+Real activity reaches the page through `admin_analytics()`, which returns
+daily aggregates per case and per clip to admins only.
 
 ## Run locally
 
