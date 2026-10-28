@@ -614,6 +614,8 @@ function val(k){
     case "price": return [mult(s.price)];
     case "since": return [pctS(s.price - 1) + " on the round", s.price - 1];
     case "sinceS": return [pctS(s.price - 1), s.price - 1];
+    case "pctN": return [Math.floor(s.pct * 100) + "%"];
+    case "pstat": return [s.status === "raising" ? `Round ${Math.floor(s.pct * 100)}% full` : s.live ? SCENARIO.stages[s.stage] : outcomeText(s)];
     case "chance": return [String(s.chance)];
     case "raised": return [`${crK(s.raised)} of ${crK(CASE[id].target)} cr`];
     case "togo": return [num(Math.max(0, CASE[id].target - s.raised))];
@@ -794,7 +796,9 @@ function drawChart(box, model){
   } else {
     model.W = Math.max(300, Math.round(box.clientWidth || 640));
     model.H = model.W < 520 ? 210 : 230;
-    html = model.empty ? `<div class="lc-empty">${esc(model.empty)}</div>` : model.svg(model.W, model.H);
+    /* the empty state takes the chart's own height, so nothing below moves
+       when the first line arrives */
+    html = model.empty ? `<div class="lc-empty" style="height:${model.H}px">${esc(model.empty)}</div>` : model.svg(model.W, model.H);
   }
   box.insertAdjacentHTML("afterbegin", html);
   if(!asTable){ wireChart(box); box._reshow(); }
@@ -850,6 +854,24 @@ function sparkLine(id){
   const d = pts.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`).join("");
   return `<svg class="scard-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
     <line x1="0" x2="${W}" y1="${y(1).toFixed(1)}" y2="${y(1).toFixed(1)}" style="stroke:var(--lc-base);stroke-width:1" vector-effect="non-scaling-stroke"/>
+    <path d="${d}" style="fill:none;stroke:${ccol(id)};stroke-width:2;stroke-linejoin:round" vector-effect="non-scaling-stroke"/></svg>`;
+}
+/* while a round is open, its chart slot shows the round filling: share of
+   the target raised so far, against a hairline at full. Until the clock
+   has started, nobody else is coming, and the slot says so */
+function fundSpark(id){
+  if(!st.started) return `<p class="scard-wait">Backers arrive once the clock starts.</p>`;
+  const c = CASE[id], now = st.t, W = 300, H = 46, t1 = Math.max(30, now);
+  const mine = st.book.txns.filter(x => x.c === id && x.kind === "round");
+  const at = t => Math.min(1, SimEngine.crowdShare(c, t) + mine.reduce((a, x) => a + (x.t <= t ? x.credits : 0), 0) / c.target);
+  const pts = [];
+  for(let t = 0; t < now; t += Math.max(1, now / 120)) pts.push([t, at(t)]);
+  pts.push([now, at(now)]);
+  const x = t => t / t1 * (W - 8) + 2, y = v => 4 + (H - 8) * (1 - v);
+  const d = pts.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`).join("");
+  return `<svg class="scard-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <line x1="0" x2="${W}" y1="${y(1).toFixed(1)}" y2="${y(1).toFixed(1)}" style="stroke:var(--lc-base);stroke-width:1" vector-effect="non-scaling-stroke"/>
+    <path d="${d}L${x(now).toFixed(1)} ${y(0)}L${x(0)} ${y(0)}Z" style="fill:${ccol(id)};opacity:.1"/>
     <path d="${d}" style="fill:none;stroke:${ccol(id)};stroke-width:2;stroke-linejoin:round" vector-effect="non-scaling-stroke"/></svg>`;
 }
 function walletSpark(){
@@ -918,7 +940,7 @@ function cardHTML(id){
       <h3 class="scard-head"><button data-open="${id}">${esc(c.head)}</button></h3>
       <p class="scard-who">${esc(c.defendant)} · ${esc(c.court)}</p>
       <div class="scard-score" data-part="score"></div>
-      <div data-part="money"></div>
+      <div class="scard-money"><div data-part="mtop"></div><div data-part="mchart"></div><div data-part="mchip"></div></div>
       <p class="scard-news" data-part="news"></p>
       <div data-part="mine"></div>
       <div class="scard-acts" data-part="acts"></div>
@@ -936,21 +958,24 @@ function pillHTML(s){
 function hotHTML(s){
   if(!s.live || !s.ev) return "";
   const r = s.price / s.ev - 1;
-  if(r >= .12) return `<span class="hot">${I.flame}Running hot: ${Math.round(r * 100)}% over the odds</span>`;
-  if(r <= -.1) return `<span class="hot cold">${I.tag}On sale: ${Math.round(-r * 100)}% under the odds</span>`;
+  if(r >= .12) return `<span class="hot">${I.flame}<span><span class="hot-k">Running hot: </span>${Math.round(r * 100)}% over the odds</span></span>`;
+  if(r <= -.1) return `<span class="hot cold">${I.tag}<span><span class="hot-k">On sale: </span>${Math.round(-r * 100)}% under the odds</span></span>`;
   return "";
 }
 function scoreHTML(s){
   return `${gauge(46, s.chance, s.c.impact)}
     <div class="sc-read"><span><i class="sc-dotm"></i><b data-v="chance:${s.id}"></b> chance to win</span><span><i class="sc-doti"></i><b>${s.c.impact}</b> social impact</span></div>`;
 }
-function moneyHTML(s){
+/* The money part of a card is three slots of fixed height: the figure, its
+   chart, and room for the running-hot chip. What fills them changes as the
+   round fills, the market moves and the case ends; the slots never do, so
+   the buttons under them stay exactly where they are. */
+function moneyTop(s){
   const id = s.id;
   if(s.status === "raising") return `<div class="meter"><i data-w="${id}"></i></div>
     <div class="meter-nums"><span><b data-v="raised:${id}"></b></span><span><b data-v="backers:${id}"></b> backers</span></div>`;
-  const row = s.live ? `<div class="sc-pricerow"><b data-v="price:${id}"></b><span>a credit from the round</span><em data-v="sinceS:${id}"></em></div>`
+  return s.live ? `<div class="sc-pricerow"><b data-v="price:${id}"></b><span>a credit from the round</span><em data-v="sinceS:${id}"></em></div>`
     : `<div class="sc-pricerow"><b>${s.payout > 0 ? mult(s.payout) : "0×"}</b><span>${s.payout > 0 ? "paid per credit in the round" : "stakes paid nothing"}</span></div>`;
-  return `${row}<div>${sparkLine(id)}</div>${hotHTML(s)}`;
 }
 function newsHTML(s){
   const e = s.last;
@@ -960,7 +985,7 @@ function newsHTML(s){
 }
 function mineHTML(s){
   if(!s.hold && !s.stake.invested) return `<div class="scard-mine none"><span>No stake yet</span></div>`;
-  if(!s.hold) return `<div class="scard-mine"><span>Put in <b>${cr(s.stake.invested)}</b>, got back <b>${cr(s.stake.returned)}</b></span><em data-v="pl:${s.id}"></em></div>`;
+  if(!s.hold) return `<div class="scard-mine"><span>Got back <b>${cr(s.stake.returned)}</b></span><em data-v="plpct:${s.id}"></em></div>`;
   return `<div class="scard-mine"><span>Your stake <b data-v="value:${s.id}"></b></span><em data-v="plpct:${s.id}"></em></div>`;
 }
 function actsHTML(s){
@@ -979,8 +1004,10 @@ function tickHome(force, charts){
     const q = n => card.querySelector(`[data-part="${n}"]`);
     patch(q("pill"), s.status + (s.status === "raising" ? Math.floor(s.pct * 100) : s.stage), () => pillHTML(s));
     patch(q("score"), s.status + s.chance, () => scoreHTML(s));
-    /* the sparkline moves with the clock, so it redraws once a second */
-    patch(q("money"), s.status === "raising" ? "r" : s.ended ? s.status : s.status + Math.floor(st.t) + hotHTML(s), () => moneyHTML(s));
+    patch(q("mtop"), s.status, () => moneyTop(s));
+    /* the chart moves with the clock, so it redraws once a second */
+    patch(q("mchart"), s.ended ? s.status : s.status + Math.floor(st.t) + st.started, () => s.status === "raising" ? fundSpark(id) : sparkLine(id));
+    patch(q("mchip"), hotHTML(s), () => hotHTML(s));
     patch(q("news"), s.last ? s.last.id : "none" + s.status, () => newsHTML(s));
     patch(q("mine"), (s.hold ? "h" : "n") + Math.round(s.stake.invested) + "/" + Math.round(s.stake.returned), () => mineHTML(s));
     patch(q("acts"), s.status + (s.hold ? "h" : "") + (snap.cash >= 1 ? "c" : ""), () => actsHTML(s));
@@ -1059,13 +1086,13 @@ function renderCase(){
 function panelHTML(s){
   const id = s.id, c = s.c, cash = snap.cash >= 1;
   let top;
-  if(s.status === "raising") top = `<div class="sc-now"><div><span class="big">${Math.floor(s.pct * 100)}%</span><small>of the round raised</small></div>
+  if(s.status === "raising") top = `<div class="sc-now"><div><span class="big" data-v="pctN:${id}"></span><small>of the round raised</small></div>
       <div style="text-align:right"><b data-v="togo:${id}"></b> cr<small>still to raise</small></div></div>
       <div class="meter" style="margin-top:12px"><i data-w="${id}"></i></div>
       <div class="meter-nums"><span><b data-v="raised:${id}"></b></span><span><b data-v="backers:${id}"></b> backers</span></div>`;
   else if(s.live) top = `<div><span class="big" data-v="price:${id}"></span><small class="sc-what">what a credit from the round is worth</small>
       <div class="sc-now-row"><span class="sc-chg" data-v="since:${id}"></span><span>The odds alone say <b data-v="model:${id}"></b></span></div></div>
-      <div style="margin-top:10px" data-part="hot"></div>`;
+      <div class="sc-hot" data-part="hot"></div>`;
   else top = `<div class="sc-now"><div><span class="big">${s.status === "lost" ? "0×" : mult(s.payout)}</span>
       <small>${s.status === "won" ? "paid per credit: the case was won" : s.status === "settled" ? "paid per credit: the case settled" : "the case was lost, and stakes paid nothing"}</small></div></div>`;
   const mine = s.stake.invested ? `<div class="sc-mine"><h3>Your stake</h3><dl>
@@ -1148,13 +1175,12 @@ const outcomeText = s => s.status === "won" ? `Won · paid ${mult(s.payout)}` : 
 function posHTML(){
   return IDS.map(id => {
     const s = snap.cases[id];
-    const status = s.status === "raising" ? `Round ${Math.floor(s.pct * 100)}% full` : s.live ? SCENARIO.stages[s.stage] : outcomeText(s);
     const right = !s.stake.invested ? `<div class="pos-r"><b>—</b><em style="color:var(--muted)">no stake</em></div>`
       : `<div class="pos-r"><b data-v="${s.hold ? "value" : "returned"}:${id}"></b><em data-v="pl:${id}"></em></div>`;
     const acts = s.ended ? "" : `<div class="pos-acts"><button class="btn line" data-act="in" data-id="${id}"${snap.cash >= 1 ? "" : " disabled"}>${s.status === "raising" ? "Invest" : s.hold ? "Add more" : "Buy in"}</button>${
       s.hold && s.live ? `<button class="btn line" data-act="out" data-id="${id}">Sell</button>` : ""}</div>`;
     return `<div class="pos-row" style="--cat:${ccol(id)}"><span class="dot"></span><div><h3><button data-open="${id}">${esc(short(id))}</button></h3>
-      <small>${esc(status)}${s.stake.invested ? ` · put in ${cr(s.stake.invested)}` : ""}</small></div>${right}${acts}</div>`;
+      <small><span data-v="pstat:${id}"></span>${s.stake.invested ? ` · put in ${cr(s.stake.invested)}` : ""}</small></div>${right}${acts}</div>`;
   }).join("");
 }
 function allocHTML(){
@@ -1184,7 +1210,9 @@ function actsListHTML(){
 function tickPort(force, charts){
   const v = $("#v-port"); if(!v.firstElementChild) return;
   const q = n => v.querySelector(`[data-part="${n}"]`);
-  patch(q("pos"), IDS.map(id => { const s = snap.cases[id]; return s.status + s.stage + Math.floor(s.pct * 100) + "/" + Math.round(s.stake.invested) + "/" + Math.round(s.stake.returned) + (s.hold ? "h" : ""); }).join("|") + (snap.cash >= 1), posHTML);
+  /* the rows (and their buttons) redraw only when a stake or a case's state
+     changes; the stage and how full a round is are painted in place */
+  patch(q("pos"), IDS.map(id => { const s = snap.cases[id]; return s.status + "/" + Math.round(s.stake.invested) + "/" + Math.round(s.stake.returned) + (s.hold ? "h" : ""); }).join("|") + (snap.cash >= 1), posHTML);
   patch(q("alloc"), IDS.map(id => Math.round(snap.cases[id].value / 5)).join("/") + "/" + Math.round(snap.cash / 5), allocHTML);
   const rows = boardRows(st.t);
   patch(q("board"), rows.map(r => r.name + Math.round(r.v)).join("|"), () => boardHTML(rows));
@@ -1606,6 +1634,7 @@ let view = "home", prevView = "home";
 function go(v){
   if(v !== "case"){ prevView = v; caseId = null; $("#v-case").innerHTML = ""; }
   view = v;
+  $("#shell").dataset.view = v;
   $$(".sim .view").forEach(el => el.classList.toggle("on", el.id === "v-" + v));
   $$("#nav button[data-go]").forEach(b => b.dataset.go === v || (v === "case" && b.dataset.go === prevView)
     ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));

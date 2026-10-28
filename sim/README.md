@@ -86,6 +86,11 @@ the clock stops for each big moment until Continue is pressed (off by
 default), and whether it holds while a clip is watched full screen (on by
 default, so watching never costs anyone a ruling).
 
+Nothing moves under the pointer while the clock runs. Each case card keeps
+one size whatever it shows, so Add more and Sell stay put, and every page
+ends with enough room to scroll its last buttons above the breaking card.
+On a case page the breaking card comes in on the left, clear of the panel.
+
 URL flags:
 
 | Flag | Does |

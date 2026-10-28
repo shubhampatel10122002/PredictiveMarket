@@ -105,8 +105,10 @@
 /* =====================================================================
    HOME
    ===================================================================== */
-.home{padding:14px 14px 120px;display:grid;gap:14px}
-.home-main{display:grid;gap:14px;min-width:0}
+/* Every page ends with room enough to scroll its last buttons clear of
+   the breaking card, which sits over the bottom of the screen */
+.home{padding:14px 14px 520px;display:grid;gap:14px}
+.home-main{display:grid;gap:14px;min-width:0;container:home-main/inline-size}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:18px}
 
 /* the welcome, until the clock starts */
@@ -175,40 +177,70 @@
 .spill.won,.spill.settled{background:#1D7A4C;color:#fff}
 .spill.lost{background:#8E2A3D;color:#fff}
 .spill.won i,.spill.settled i,.spill.lost i{display:none}
-.scard-body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:10px;flex:1}
+.scard-body{padding:13px 14px 14px;display:flex;flex-direction:column;gap:10px;flex:1;container:scard/inline-size}
 .scard-head{margin:0;font-size:17px;line-height:1.24;letter-spacing:-.015em;font-weight:700}
 .scard-head button{all:unset;cursor:pointer}
 .scard-head button:focus-visible{outline:3px solid var(--blue);outline-offset:2px;border-radius:4px}
 .scard-who{margin:-4px 0 0;font-size:12.5px;color:var(--muted);line-height:1.35}
 .scard-score{display:flex;align-items:center;gap:10px}
-.scard-score .sc-read{display:flex;flex-direction:column;gap:1px;font-size:12px;color:var(--muted);line-height:1.25}
+.scard-score .sc-read{display:flex;flex-direction:column;gap:1px;min-width:0;font-size:12px;color:var(--muted);line-height:1.25}
+.scard-score .sc-read span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scard-score .sc-read b{font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums}
 .sc-dotm,.sc-doti{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:1px}
 .sc-dotm{background:var(--merit)} .sc-doti{background:var(--impact)}
-.sc-pricerow{display:flex;align-items:baseline;gap:4px 8px;flex-wrap:wrap;margin-bottom:2px}
-.sc-pricerow b{font-size:24px;font-weight:800;letter-spacing:-.03em;line-height:1.1}
-.sc-pricerow span{font-size:12px;color:var(--muted)}
-.sc-pricerow em{margin-left:auto;font-style:normal;font-size:12.5px;font-weight:700}
+/* A card holds still while the clock runs: every part below the score keeps
+   one height whatever it shows, so the buttons at the bottom stay exactly
+   where they were. The money part is three slots: the figure, its chart
+   (the round filling, then the price) and room for the running-hot chip. */
+.scard-money{display:grid;grid-template-rows:32px 46px 24px}
+.scard-money>div{min-width:0}
+.sc-pricerow{display:flex;align-items:baseline;gap:4px 8px;margin-bottom:2px;white-space:nowrap}
+.sc-pricerow b{flex:none;font-size:24px;font-weight:800;letter-spacing:-.03em;line-height:1.1}
+.sc-pricerow span{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:var(--muted)}
+.sc-pricerow em{flex:none;margin-left:auto;font-style:normal;font-size:12.5px;font-weight:700}
 .meter{height:8px;border-radius:4px;background:var(--chip);overflow:hidden}
 .meter i{display:block;height:100%;width:0;border-radius:4px;background:var(--cat);transition:width .35s ease}
-.meter-nums{display:flex;justify-content:space-between;gap:8px;margin-top:6px;font-size:12px;color:var(--muted)}
+.meter-nums{display:flex;justify-content:space-between;gap:8px;margin-top:6px;font-size:12px;color:var(--muted);white-space:nowrap}
+.meter-nums span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .meter-nums b{color:var(--ink);font-variant-numeric:tabular-nums}
 .scard-spark{display:block;width:100%;height:46px}
-.scard-news{margin:0;font-size:13px;line-height:1.4;color:var(--ink);display:flex;gap:7px;align-items:flex-start;min-height:36px}
+.scard-wait{margin:0;height:46px;display:flex;align-items:center;font-size:12px;line-height:1.35;color:var(--muted);text-wrap:balance}
+.scard-news{margin:0;font-size:13px;line-height:1.4;color:var(--ink);display:flex;gap:7px;align-items:flex-start;height:2.8em}
 .scard-news small{flex:none;font-size:11px;font-weight:700;color:var(--muted);padding-top:1px;white-space:nowrap}
 .scard-news span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .scard-mine{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 11px;border-radius:12px;
-  background:color-mix(in srgb,var(--cat) 9%,var(--bg));font-size:13px}
+  background:color-mix(in srgb,var(--cat) 9%,var(--bg));font-size:13px;white-space:nowrap}
+.scard-mine span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .scard-mine b{font-variant-numeric:tabular-nums}
-.scard-mine em{font-style:normal;font-weight:700;font-variant-numeric:tabular-nums}
+.scard-mine em{flex:none;font-style:normal;font-weight:700;font-variant-numeric:tabular-nums}
 .scard-mine.none{background:var(--bg);color:var(--muted)}
 .scard-acts{display:flex;gap:8px;margin-top:auto}
-.scard-acts .btn{flex:1;padding:11px 12px;font-size:14.5px;border-radius:12px}
+.scard-acts .btn{flex:1;min-width:0;padding:11px 12px;font-size:14.5px;border-radius:12px;white-space:nowrap}
 .btn.line{background:var(--surface);color:var(--ink);border:1px solid var(--line)}
-.hot{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;border-radius:99px;padding:3px 9px;
-  background:color-mix(in srgb,var(--impact) 16%,transparent);color:var(--ink)}
+.hot{display:inline-flex;align-items:center;gap:5px;max-width:100%;font-size:11.5px;font-weight:700;border-radius:99px;padding:3px 9px;
+  background:color-mix(in srgb,var(--impact) 16%,transparent);color:var(--ink);white-space:nowrap}
 .hot.cold{background:color-mix(in srgb,var(--merit) 16%,transparent)}
-.hot svg{width:12px;height:12px}
+.hot svg{flex:none;width:12px;height:12px}
+.hot>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* a card too narrow for its figures on one line lets them take two, and
+   keeps the room for both all the time */
+@container scard (max-width:251.98px){
+  .scard-money{grid-template-rows:51px 46px 24px}
+  .sc-pricerow{flex-wrap:wrap}
+  .meter-nums{flex-wrap:wrap;row-gap:0}
+  .meter-nums span:last-child{margin-left:auto}
+}
+@container scard (max-width:209.98px){
+  .hot-k{display:none}
+}
+/* narrower still, the figure and its change share the first line and the
+   label has the second, every time */
+@container scard (max-width:199.98px){
+  .sc-pricerow{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:8px}
+  .sc-pricerow span{grid-row:2;grid-column:1/-1}
+  .scard-mine{padding-inline:9px;font-size:12px}
+  .scard-acts .btn{padding-inline:6px;font-size:13.5px}
+}
 
 /* the live feed */
 .fd{padding:14px 0 6px;min-width:0;align-self:start}
@@ -327,16 +359,18 @@
 .sc-hero h1{margin:6px 0 6px;font-size:clamp(22px,6.2vw,30px);line-height:1.14;letter-spacing:-.025em;font-weight:800;
   text-wrap:balance;max-width:24ch}
 .sc-hero p{margin:0;font-size:13px;color:#CCD6E2}
-.sc-body{padding:0 14px 120px;display:grid;gap:14px;margin-top:14px}
+.sc-body{padding:0 14px 520px;display:grid;gap:14px;margin-top:14px}
 .sc-panel{padding:15px 16px}
 .sc-now{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .sc-now .big{font-size:34px;line-height:1}
 .sc-now small{display:block;font-size:12.5px;color:var(--muted);margin-top:4px}
 .sc-now .sc-chg{font-size:14px;font-weight:800}
 .sc-what{display:block;font-size:12.5px;color:var(--muted);margin-top:4px}
-.sc-now-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin-top:10px;font-size:12.5px;color:var(--muted)}
-.sc-now-row .sc-chg{font-size:14px;font-weight:800}
+.sc-now-row{display:flex;align-items:baseline;gap:4px 14px;margin-top:10px;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.sc-now-row .sc-chg{flex:none;font-size:14px;font-weight:800}
+.sc-now-row>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .sc-now-row b{color:var(--ink)}
+.sc-hot{margin-top:10px;min-height:24px}
 .sc-score{display:flex;align-items:center;gap:12px;margin:14px 0 4px;padding-top:14px;border-top:1px solid var(--line)}
 .sc-score .sc-read{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--muted)}
 .sc-score .sc-read b{font-size:18px;color:var(--ink);font-variant-numeric:tabular-nums;margin-right:4px}
@@ -390,7 +424,7 @@
 /* =====================================================================
    PORTFOLIO
    ===================================================================== */
-.pf{padding:16px 14px 120px;display:grid;gap:14px}
+.pf{padding:16px 14px 520px;display:grid;gap:14px}
 .pf-head h1,.rs-head h1{margin:0;font-size:28px;letter-spacing:-.025em;font-weight:800}
 .pf-head p,.rs-head p{margin:2px 0 0;font-size:14px;color:var(--muted)}
 .pf-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -410,7 +444,7 @@
 .pos-row .dot{width:10px;height:10px}
 .pos-row h3{margin:0;font-size:14.5px;letter-spacing:-.01em}
 .pos-row h3 button{all:unset;cursor:pointer}
-.pos-row small{font-size:12px;color:var(--muted)}
+.pos-row small{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pos-r{text-align:right;line-height:1.2}
 .pos-r b{display:block;font-size:16px;font-variant-numeric:tabular-nums}
 .pos-r em{font-style:normal;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
@@ -439,7 +473,7 @@
 /* =====================================================================
    RESULTS
    ===================================================================== */
-.rs{padding:16px 14px 120px;display:grid;gap:14px}
+.rs{padding:16px 14px 520px;display:grid;gap:14px}
 .rs-hero{position:relative;overflow:hidden;border-radius:22px;background:var(--sbg);color:#fff;padding:24px 20px;isolation:isolate;
   border:1px solid rgba(255,255,255,.08)}
 .rs-hero::before{content:"";position:absolute;inset:-30%;z-index:-1;opacity:.5;
@@ -605,7 +639,7 @@
   .sb-track,.sb-fill{top:9px}
   .sb-speed{display:flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--sline);border-radius:10px}
   .sb-next{display:inline-flex}
-  .home{padding:18px 18px 110px}
+  .home{padding:18px 18px 400px}
   .scards{grid-template-columns:repeat(3,minmax(0,1fr))}
   .intro{padding:30px 30px 26px}
   .intro-steps{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -614,10 +648,10 @@
   .mk{padding:16px 18px 12px}
   .sc-hero{min-height:320px}
   .sc-hero-in{padding:62px 24px 22px}
-  .sc-body{padding:0 18px 110px}
+  .sc-body{padding:0 18px 400px}
   .sc-people{grid-template-columns:1fr 1fr}
   .sc-crowd{grid-template-columns:repeat(4,minmax(0,1fr))}
-  .pf,.rs{padding:22px 18px 110px}
+  .pf,.rs{padding:22px 18px 400px}
   .pf-tiles{grid-template-columns:repeat(4,minmax(0,1fr))}
   .tile.hero{grid-column:span 2}
   .rs-hero{padding:32px 30px}
@@ -643,21 +677,24 @@
   .nav .brand{padding-bottom:14px}
   .sim .nav-foot{border-top:1px solid var(--line);padding:16px 12px 6px}
   .simbar{padding:12px 24px}
-  .home{grid-template-columns:minmax(0,1fr) 340px;align-items:start;max-width:1400px;margin:0 auto;padding:22px 24px 60px;gap:20px}
+  .home{grid-template-columns:minmax(0,1fr) 340px;align-items:start;max-width:1400px;margin:0 auto;padding:22px 24px 400px;gap:20px}
   .fd{position:sticky;top:0;max-height:calc(100vh - 110px);display:flex;flex-direction:column}
   .fd-list{overflow-y:auto;flex:1;scrollbar-width:thin}
   .sc-wrap{max-width:1240px;margin:0 auto;padding:20px 24px 0}
   .sc-hero{border-radius:22px;min-height:340px}
-  .sc-body{grid-template-columns:minmax(0,1fr) 360px;align-items:start;padding:0 0 60px;margin-top:18px;column-gap:24px}
+  .sc-body{grid-template-columns:minmax(0,1fr) 360px;align-items:start;padding:0 0 400px;margin-top:18px;column-gap:24px}
   .sc-side{grid-column:2;grid-row:1/span 9;position:sticky;top:16px;display:grid;gap:14px}
   .sc-main{grid-column:1;display:grid;gap:14px;min-width:0}
-  .pf,.rs{max-width:1100px;margin:0 auto;padding:26px 24px 60px}
+  .pf,.rs{max-width:1100px;margin:0 auto;padding:26px 24px 400px}
   .pf-grid{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:14px;align-items:start}
   .pf-grid>div{display:grid;gap:14px;min-width:0}
   .rs-grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px;align-items:start}
   .rs-grid>div{display:grid;gap:14px;min-width:0}
   .moment{right:22px;bottom:22px;width:560px}
   .moment.on{grid-template-columns:166px minmax(0,1fr)}
+  /* a case keeps its buttons in the panel on the right, which stays put as
+     the page scrolls, so there the breaking card comes in on the left */
+  .sim[data-view="case"] .moment{right:auto;left:258px;width:min(560px,calc(100vw - 666px))}
   .mo-clip{min-height:295px}
   .splayer.on{flex-direction:row;gap:36px}
   .spl-frame{height:min(84vh,820px)}
@@ -666,6 +703,16 @@
 }
 @media (min-width:1400px){
   .home{grid-template-columns:minmax(0,1fr) 380px}
+}
+/* three across only while each card has room for its numbers; a narrow
+   laptop window stacks them, as a phone does */
+@container home-main (max-width:623.98px){
+  .scards{grid-template-columns:minmax(0,1fr)}
+}
+/* where the legend wraps, each value keeps one width, so it wraps the same
+   way whether a case is raising or trading */
+@container home-main (max-width:699.98px){
+  .mk-legend b{display:inline-block;min-width:5.9em;font-variant-numeric:tabular-nums}
 }
 @media (max-width:1023.98px){
   .sc-side,.sc-main{display:contents}
