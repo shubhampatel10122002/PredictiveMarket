@@ -30,6 +30,7 @@ members would look, so the product can be shown rather than described.
 | `config.js` | Supabase project URL and publishable key |
 | `cms.js` | Folds cases published from the admin into `CASES`, then starts `app.js` |
 | `admin/` | The internal admin at `/admin`: cases, clips and video, media, pledges, comments, team |
+| `sim/` | LaunchJustice Live at `/sim`: the ten-minute investor simulation. See *The simulation* below |
 | `supabase/schema.sql` | Tables, row level security policies and grants |
 | `clips/` | Vertical clip files, and how to add real ones |
 | `tools/` | The clip renderer. Not shipped, not loaded by the app |
@@ -231,6 +232,22 @@ How it fits together:
   `admin_team()` in the database do this. Supabase's own reset emails aren't used:
   its built-in mailer only reaches the Supabase project's own team members.
 - `/#case=<id>` on the site opens a case directly, which is what "View on site" uses.
+
+## The simulation
+
+`/sim` is LaunchJustice Live: a ten-minute, timed simulation of investing in
+litigation, for walking investors through the product by using it. It gets
+1,000 credits and three fictional cases (a hazardous-waste plant next to a
+school, race-based lung testing, and Medicaid claims data sold to target drug
+ads) and plays four years of interviews, depositions, rulings and a verdict
+on a clock. The investor funds rounds, adds more by buying out leaving
+backers, sells to the waitlist, and finishes ranked against 2,000 simulated
+investors.
+
+It shares the site's `styles.css`, `data.js` and `viz.js` and adds its own
+files in `sim/`. It writes nothing to Supabase and tracks nothing, so it can
+never touch real pledges or the analytics. `sim/README.md` covers presenting,
+editing the story, and putting real clips on each moment.
 
 ## Analytics tracking
 
