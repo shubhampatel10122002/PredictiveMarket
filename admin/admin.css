@@ -185,12 +185,17 @@ h2.a-h small{font-size:13px;font-weight:500;color:var(--muted)}
 .r-time{grid-template-columns:1fr 150px auto auto}
 .r-budget,.r-stat{grid-template-columns:1fr 160px auto}
 .r-update{grid-template-columns:130px 1fr auto}
+.r-faq{grid-template-columns:1fr auto}
+.r-faq>.rep-tools{grid-area:1 / 2}
+.r-faq>textarea{grid-column:1 / -1}
 .r-why{grid-template-columns:110px 110px 80px 1fr auto}
 .r-why .wide{grid-column:1 / -2}
 @media (max-width:699.98px){
   .r-factor,.r-impact,.r-time,.r-budget,.r-stat,.r-update,.r-why{grid-template-columns:1fr 1fr}
   .rep-row>.rep-tools{grid-column:1 / -1;justify-content:flex-end}
   .rep-row>textarea,.rep-row>.note-inp{grid-column:1 / -1}
+  .r-faq>input{grid-column:1 / -1}
+  .r-faq>.rep-tools{grid-row:auto}
 }
 .delta.up{color:var(--up);font-weight:700}.delta.down{color:var(--down);font-weight:700}
 .warn{display:flex;gap:10px;align-items:center;font-size:13px;margin-top:10px;padding:9px 12px;border-radius:10px;

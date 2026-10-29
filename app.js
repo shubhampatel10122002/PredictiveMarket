@@ -55,6 +55,7 @@ const icons = {
   pledge:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg>',
   info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>',
+  help:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg>',
   share:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 13v7h14v-7"/></svg>',
   heart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>',
   heartFill:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>',
@@ -758,7 +759,7 @@ let filter = "all", query = "";
 function renderCases(){
   const v = $("#v-cases");
   v.innerHTML = `<div class="head">
-      <h1>Cases</h1>
+      <div class="head-top"><h1>Cases</h1><button class="head-faq" id="faqGo">${icons.help}FAQ</button></div>
       <div class="ticker-live" id="liveTick"><i></i><span></span></div>
       <input class="search" type="search" placeholder="Search by issue, NGO or defendant" aria-label="Search cases" value="${esc(query)}">
       <div class="chips" role="group" aria-label="Filter by issue">
@@ -766,10 +767,19 @@ function renderCases(){
         ${Object.entries(CATS).map(([k,val])=>`<button class="chip" data-f="${k}" aria-pressed="${filter===k}">${val.label}</button>`).join("")}
       </div></div>
     <div class="trendrow" id="trendRow"></div>
-    <div class="list" id="caseList"></div>`;
+    <div class="list" id="caseList"></div>
+    <section class="faq" id="faq" aria-labelledby="faqH">
+      <div class="faq-head"><h2 id="faqH" tabindex="-1">Questions, answered</h2><p>What people ask before they back a case.</p></div>
+      ${faqList(platformFaq())}
+    </section>`;
   const s = v.querySelector(".search");
   s.addEventListener("input",()=>{ query=s.value; renderCaseList(); });
   v.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{ filter=b.dataset.f; v.querySelectorAll(".chip").forEach(x=>x.setAttribute("aria-pressed",x===b)); renderCaseList(); }));
+  /* the head is sticky, so land the questions just under it, not behind it */
+  v.querySelector("#faqGo").addEventListener("click",()=>{
+    v.scrollTo({top: $("#faq").offsetTop - v.querySelector(".head").offsetHeight, behavior: REDUCED ? "auto" : "smooth"});
+    $("#faqH").focus({preventScroll:true});
+  });
   renderTrendRow();
   renderCaseList();
   startLiveTicker();
@@ -843,16 +853,52 @@ function startLiveTicker(){
   if(!REDUCED) liveT = setInterval(beat, 4200);
 }
 
+/* ============ FAQ ============
+   The platform's questions sit at the foot of Cases, where people arrive,
+   and open as a sheet from a case page so nobody loses their place there.
+   Each case has a short list of its own, drawn with the case sections.
+   Every answer is a native <details>, so it opens with a tap, a click or
+   the keyboard. Figures are never typed into an answer: they are read from
+   SPLIT and the live cases, the same places every other screen reads them. */
+const faqList = items => `<div class="faq-list">${items.map(([q,a])=>`
+  <details class="faq-i"><summary><span>${q}</span>${icons.down}</summary><div class="faq-a">${a}</div></details>`).join("")}</div>`;
+const times = x => +x.toFixed(2)+"×";
+const percent = x => Math.round(x*100)+"%";
+/* "3 to 5" across the cases on the platform, or one value when they agree */
+const spread = (xs, f) => { const lo = f(Math.min(...xs)), hi = f(Math.max(...xs)); return lo===hi ? lo : lo+" to "+hi; };
+
+function platformFaq(){
+  /* only cases that set their multiples: one made in the admin carries the
+     older awardMult and settleShare instead, which outcomeFor does not read */
+  const mult = k => CASES.map(c=>c.outcomes[k]).filter(Number.isFinite);
+  return [
+    ["Is this a donation or an investment?",
+     `<p>An investment. If a case wins, you get back ${spread(mult("winMult"), times)} what you put in, depending on the case. If it settles, at least ${times(Math.min(...mult("settleMult")))}. If it loses, nothing. Every case shows its own numbers before you invest, and they are estimates, not promises.</p>`],
+    ["Does any money move today?",
+     `<p>No. For now an investment is a commitment, not a payment. Nothing is collected until investing opens, and we'll contact you when it does.</p>`],
+    ["How long is my money locked in?",
+     `<p>Until the case ends, which is ${spread(CASES.map(lockYears), Math.round)} years on the cases open now. There are no early withdrawals, and every case shows its lock-in and expected end date before you invest.</p>`],
+    ["Where does an award go?",
+     `<p>${percent(SPLIT.plaintiff)} to the plaintiff, ${percent(SPLIT.backers)} to backers in proportion to what each put in, and ${percent(SPLIT.platform)} to LaunchJustice: a 5% platform fee and a 1% contingent return, paid only when a case wins. About ${percent(SPLIT.processingFee)} of every investment goes to payment processing first.</p>`],
+    ["How are cases chosen?",
+     `<p>Every case passes the same five checks before it is listed. We verify the lawyers, have a litigator outside the firm read the case file, test the budget against comparable filings, confirm each plaintiff's consent and clear conflicts. Vetting checks the people and the paperwork, not whether the case will win.</p>`],
+    ["What do the two scores mean?",
+     `<p>Chance to win starts from how often similar cases succeed, then moves for what makes this one different: the judge, the lawyers, the evidence and more. Social impact is how much a case matters beyond the people bringing it. The two are kept apart on purpose, and both are estimates that move as the case does.</p>`],
+    ["Do backers get a say in the case?",
+     `<p>No. The plaintiffs and their lawyers make every decision, including whether to settle. Backers see new filings and rulings first in each case's updates, and can put questions to the legal team in its discussion.</p>`]
+  ];
+}
+
 /* =====================================================================
    case page
    ---------------------------------------------------------------------
    One scrolling page, ordered the way a person decides: what is this, what
    do others think, can it win, when do I get my money back, who is running
-   it, and only then the filings. The discussion sits third rather than
-   behind a tab, and a rolling highlight puts a real voice on the screen
-   within a second of arriving.
+   it, what is left to ask, and only then the filings. The discussion sits
+   third rather than behind a tab, and a rolling highlight puts a real voice
+   on the screen within a second of arriving.
    ===================================================================== */
-const SECTIONS = [["s-why","Why"],["s-talk","Discussion"],["s-time","Timeline"],["s-return","Returns"],["s-clips","Clips"],["s-team","Team"],["s-detail","Detail"]];
+const SECTIONS = [["s-why","Why"],["s-talk","Discussion"],["s-time","Timeline"],["s-return","Returns"],["s-clips","Clips"],["s-team","Team"],["s-faq","FAQ"],["s-detail","Detail"]];
 
 function scoreHeadline(c){
   const m = meritScore(c), i = impactScore(c);
@@ -1033,6 +1079,29 @@ function teamHTML(c){
   </section>`;
 }
 
+/* The questions written for this case, between two that every case answers
+   from its own numbers: the factor that costs it most on chance to win
+   first, and when the money comes back last. */
+function caseFaq(c){
+  const worst = c.merit.factors.reduce((w,f)=> f.delta < (w ? w.delta : 0) ? f : w, null);
+  const risk = (worst
+      ? `<p>The factor that takes most off its chance to win is <b>${esc(worst.label)}</b>, at −${Math.abs(worst.delta)} points. ${esc(worst.note)}</p>`
+      : `<p>Nothing in its chance-to-win score counts against it.</p>`)
+    + `<p>${worst ? "All told" : "Even so"}, there's an estimated ${Math.round(c.outcomes.lose*100)}% chance it loses, and a loss returns nothing. <button class="link" data-score="merit">See every factor</button></p>`;
+  const back = `<p>When the case ends, which is expected in ${endYear(c)}. It runs about ${lockYears(c)} years in all and is in ${esc(STAGES[c.stageIdx])} now, stage ${c.stageIdx+1} of ${STAGES.length}. There are no early withdrawals.</p>`;
+  return [["What's the biggest risk?", risk],
+    ...(c.faq||[]).filter(([q,a])=>q && a).map(([q,a])=>[esc(q), `<p>${esc(a)}</p>`]),
+    ["When would I get my money back?", back]];
+}
+
+function faqHTML(c){
+  return `<section class="sec" id="s-faq">
+    <h2 class="sec-h">Questions about this case</h2>
+    ${faqList(caseFaq(c))}
+    <p class="faq-more">Something else? <button class="link" data-jump="s-talk">Ask in the discussion</button>, where the legal team answers in public, or read <button class="link" data-faq>how investing works on every case</button>.</p>
+  </section>`;
+}
+
 function detailHTML(c){
   const tot = c.budget.reduce((s,[,n])=>s+n,0);
   return `<section class="sec" id="s-detail">
@@ -1102,7 +1171,7 @@ function openCase(id, jumpTo, via, clip){
       ${SECTIONS.map((s,i)=>`<button data-jump="${s[0]}" class="${i?"":"on"}">${s[1]}</button>`).join("")}
     </nav>
     <main class="csections">
-      ${whyHTML(c)}${talkHTML(c)}${timeHTML(c)}${returnHTML(c, fanAmount)}${clipsHTML(c)}${teamHTML(c)}${detailHTML(c)}
+      ${whyHTML(c)}${talkHTML(c)}${timeHTML(c)}${returnHTML(c, fanAmount)}${clipsHTML(c)}${teamHTML(c)}${faqHTML(c)}${detailHTML(c)}
     </main>
   </div>`;
 
@@ -1120,6 +1189,7 @@ function openCase(id, jumpTo, via, clip){
   v.querySelectorAll("[data-clip]").forEach(b=>b.addEventListener("click",()=>
     b.dataset.clip==="hero" ? openPlayer(c, -1) : openPlayer(c, +b.dataset.clip)));
   v.querySelectorAll("[data-jump]").forEach(b=>b.addEventListener("click",()=>jump(b.dataset.jump)));
+  v.querySelectorAll("[data-faq]").forEach(b=>b.addEventListener("click", openFaq));
   const rate = v.querySelector("#rateBtn"); rate && rate.addEventListener("click",()=>openRate(c.id));
 
   /* --- the runway explains itself when you touch it --- */
@@ -1424,6 +1494,15 @@ function openVetting(c){
     <div class="notice">Vetting is a check on the people and the paperwork. It is not an opinion on whether the case will win — that is what the chance-to-win score is for.</div>
     <button class="btn primary" id="vetClose">Got it</button>`);
   $("#vetClose").onclick = closeSheet;
+}
+
+/* the platform's questions, from a case page, without leaving the case */
+function openFaq(){
+  openSheet(`<h2 id="sheetTitle">Questions, answered</h2>
+    <p class="sub">How investing works, on every case.</p>
+    ${faqList(platformFaq())}
+    <button class="btn primary" id="faqClose" style="margin-top:16px">Got it</button>`);
+  $("#faqClose").onclick = closeSheet;
 }
 
 /* the community score, from the visitor's side */

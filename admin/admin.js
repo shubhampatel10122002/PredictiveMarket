@@ -443,6 +443,7 @@ const TPL = {
   factor: () => ({label:"", delta:0, note:""}), impact: () => ({label:"", weight:0, score:50, note:""}),
   time: () => ["", "", 0], budget: () => ["", 0], stat: () => ["", ""],
   update: () => [new Date().toLocaleDateString("en-GB", {month:"short", year:"numeric"}), ""],
+  faq: () => ["", ""],
   why: () => ({kind:"stat", value:"", label:"", note:""})
 };
 
@@ -679,6 +680,11 @@ function tabDetails(){
   const c = draft.c;
   return sec("The case in full", "The plain-English summary. Leave a blank line between paragraphs.",
       fld(null, "summary", {t:"paras", area:true, rows:8}))
+  + sec("Questions about this case", "Two or three that people ask about this case, answered in a sentence or two. The site adds its biggest risk and when the money comes back, worked out from the case's own numbers, so leave chances, returns and dates out of these.", `
+    <div class="rep">${c.faq.map((r, i) => `<div class="rep-row r-faq">
+      ${fld(null, `faq.${i}.0`, {ph:"A question backers ask"})}
+      ${fld(null, `faq.${i}.1`, {area:true, rows:2, ph:"The answer, in a sentence or two", cls:"note-inp"})}${tools("faq", i, c.faq.length)}</div>`).join("")}</div>
+    ${addBtn("faq", "faq", "Add a question")}`)
   + sec("Why you should care", "Three numbers work best. A dot grid shows “x of y”; the others show the value large.", `
     <div class="rep">${c.why.map((w, i) => `<div class="rep-row r-why">
       ${fld(null, `why.${i}.kind`, {opts:[["stat","Big number"],["delta","Change"],["dots","Dot grid"]]})}
