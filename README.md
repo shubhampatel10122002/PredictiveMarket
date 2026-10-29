@@ -198,7 +198,7 @@ carries its own words. The beats stay in the data as the written version.
 sign-in. It is where cases, clips and video go in.
 
 - **Overview**: live cases, clips still waiting for video, the latest pledges and comments
-- **Analytics**: how every case is doing on attention and on money. See *The analytics page* below
+- **Analytics**: what draws investment, what moved it and what to try next, for the platform and for each case. See *The analytics page* below
 - **Cases**: every case, demo and new. The editor covers everything the case page
   shows, with the site's own score dial, waterfall, bloom and runway redrawn as
   you type, and a Raw data tab for anything the form does not cover
@@ -275,47 +275,88 @@ deletes, and only the publishable key is sent.
 
 ## The analytics page
 
-`/admin/#/analytics`, and `/admin/#/analytics/<case>` for one case. One row of
+`/admin/#/analytics`, and `/admin/#/analytics/<case>` for one case. It is built
+to say why money moves, not only how much: what goes with people investing,
+what moved money and attention and when, and what to try next. One row of
 filters scopes everything: 7, 30 or 90 days or all time, compared with the
 period before.
 
-- **KPI row**: invested, new backers, case visits, clip plays, watch time, and
-  visit-to-investment conversion
-- **Money invested per day**, stacked by case (by week past three months)
-- **What stands out**: plain-English findings worked out from the numbers, such
-  as the fastest case to half funded, a case people watch but rarely back, the
-  case furthest from its goal at its current pace, a clip that sends unusually
-  many people on to its case
-- **Attention against money**: minutes spent per day against dollars per day,
-  split at the medians into watched and funded, watched not funded, funded
-  quietly, and not landing yet
-- **Cases**: a sortable leaderboard with funded %, money and backers in the
-  period, visits, conversion, time on page, watch time, the last 14 days'
-  trend, and how long until fully funded at the current pace
-- **Funding race** (share of goal by days since listing) and **days to half
-  funded**: which cases filled fast and which never got going
-- **Clips**: plays, average watch, completion, click-through to the case and to
-  invest, and a drop-off curve showing where viewers stop
-- **From clip to investment** (plays, visits, invest opened, invested),
-  **where visits come from**, and a **live feed** of real events
+- **The money, taken apart**: invested = visitors × invest rate × average
+  investment, which is exact, so the row says which of the three moved the
+  money ("▲37%, mostly more visitors"). Buzz and time spent sit beside it.
+- **AI analyst (preview)**: the findings in words, each with its numbers and
+  something to try. Investment follows chance to win and counsel's record, not
+  time spent or social impact; news brings crowds that rarely invest; a case
+  people watch but don't back, and why; which cases are gaining on their own
+  news and which have gone quiet; what doubters ask about.
+- **What draws investment**: every factor against three outcomes across the
+  live cases: does it bring visitors, does it turn them into investors, does it
+  make investments bigger. The factors are the meeting's three families plus
+  attention: chance to win, how similar cases did and counsel's record
+  (historical performance), expected return and lock-in (financial), social
+  impact, buzz and a supportive discussion (public sentiment), and time spent.
+  Pick a cell to plot that pair case by case.
+- **What moved, and why**: buzz, visitors and money over the same days, stacked
+  by issue, with every spike marked and named with its cause: the case's own
+  news (a ruling, talks, a hearing), press about the case, news about the issue,
+  or, when nothing is on record, the source that brought the extra visitors and
+  the clip behind them. Each spike says whether its visitors invested at the
+  usual rate.
+- **Attention against money, by issue**: each issue's share of the time spent
+  against its share of the money, and **where case visits come from**
+- **Cases**: the leaderboard, with chance to win and social impact beside the
+  money, and what is moving each case under its 14-day trend
+- **Backers**: which issues the same people back, strongest pairings first,
+  and **what the discussion is about**: themes in comments by backers against
+  everyone else, and the questions still waiting for an answer from counsel
+- **Clips**, **where viewers stop**, **from clip to investment**, and a **live
+  feed** of real events
 
-Every chart has a Table button with the same numbers. One case on its own adds
-money raised against its goal with the recent pace projected, its funding
-milestones, and daily visits and money.
+One case on its own adds its scores, its own analyst reading, how it compares
+with every other case on each measure and factor, money raised against its goal
+with the recent pace projected, what moved it, and its discussion. Every chart
+has a Table button with the same numbers.
+
+How the readings are worked out, all in `admin/analytics-data.js`:
+
+- `drivers()` ranks cases by each factor and by each outcome and correlates the
+  ranks (Spearman), over cases with 50 or more visitors in the period. With six
+  cases that is a direction to test, not proof, and the page says so.
+- `spikes()` marks a day hot at 1.8 times the median of its 28 days before (or
+  twice the usual money), joins hot days into spikes of up to two weeks, and
+  looks for the cause: an event of the case's from three days before to the
+  end, a jump in buzz, or the visit source that grew most.
+- `backing()` reads who backs what from `admin_pledges()`, by `actor_id`.
+- `discussion()` tags comments with themes by keyword. It is the part a language
+  model should do once one is connected.
+- `analyst()` writes the findings by rule from all of the above. **The AI is a
+  preview**: no model is called and no key is needed. Connecting one means
+  sending the same inputs (plain data) and rendering a reply in the same shape,
+  `{headline, findings: [{tone, caseId, title, why, act}]}`.
 
 **Demo history.** The platform has few real users yet, so `admin/analytics-data.js`
 builds a believable daily history for every case from listing day to today, out
 of the case's own numbers: it adds up exactly to `baseRaised` and `baseBackers`,
 the last week matches the trending badge ("+4,106 backers this week"), and each
 demo case has a story (maple-evictions went viral, farmworker-wages is the slow
-burner, school-facial-rec is watched but not funded). Real tracked activity,
-real pledges and real comments are added on top, the same way the site adds
-real pledges to `baseRaised`. Untick **Include demo history** to see real
-activity only, which is how to check tracking works. The history is seeded per
-case, so it is the same on every load.
+burner, school-facial-rec is watched but not funded). Each story is a dated list
+of events, the case's own (the FOIA production, the filing, the court's pause,
+mediation) and the news (coverage of the case, or of its issue, such as the
+heat wave that put farmworkers in the headlines), which is what the page names
+as causes. News brings visitors who invest at a falling rate; a case's own news
+brings backers. Buzz is demo-only too: it is what a news and social listening
+service would report, and with demo history off the page says it isn't
+connected. Backer overlap in the demo is modelled from how alike cases are to
+back, and the discussion uses the seeded threads.
 
-Real activity reaches the page through `admin_analytics()`, which returns
-daily aggregates per case and per clip to admins only.
+Real tracked activity, real pledges and real comments are added on top, the
+same way the site adds real pledges to `baseRaised`. Untick **Include demo
+history** to see real activity only, which is how to check tracking works. The
+history is seeded per case, so it is the same on every load.
+
+Real activity reaches the page through `admin_analytics()`, which returns daily
+aggregates per case and per clip to admins only; `admin_pledges()` and the
+public comments table supply who backs what and what the discussion says.
 
 ## Run locally
 
