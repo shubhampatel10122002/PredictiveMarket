@@ -384,6 +384,12 @@ label.f{display:block;font-size:14px;font-weight:600;margin:14px 0 6px}
 .ticker-live span.in{animation:tickIn .45s cubic-bezier(.2,.8,.2,1) both}
 @keyframes tickIn{from{opacity:0;transform:translateY(7px)}}
 
+/* the way down to the questions at the foot of the page */
+.head-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.head-faq{flex:none;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);
+  border-radius:99px;padding:6px 12px 6px 9px;font-size:13px;font-weight:600;color:var(--muted)}
+.head-faq svg{flex:none}
+
 .trendrow{padding:10px 0 4px}
 .trendrow-head{display:flex;align-items:baseline;gap:9px;padding:0 18px 10px}
 .trendrow-head h2{margin:0;font-size:17px;letter-spacing:-.01em;display:flex;align-items:center;gap:6px}
@@ -779,6 +785,37 @@ label.f{display:block;font-size:14px;font-weight:600;margin:14px 0 6px}
 .facts dd{margin:1px 0 0;font-size:14px;font-weight:600}
 
 /* =====================================================================
+   FAQ — the platform's questions at the foot of Cases, and each case's
+   own above its detail. One card, a row per question, and the answer
+   opens under it.
+   ===================================================================== */
+.faq-list{margin-top:14px;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.faq-i+.faq-i{border-top:1px solid var(--line)}
+.faq-i>summary{list-style:none;display:flex;align-items:center;gap:12px;padding:14px 15px;
+  font-size:15px;font-weight:700;line-height:1.3;letter-spacing:-.005em;cursor:pointer}
+.faq-i>summary::-webkit-details-marker{display:none}
+/* inside the card's rounded clip, so the ring is drawn inward */
+.faq-i>summary:focus-visible{outline-offset:-3px;border-radius:14px}
+.faq-i>summary span{flex:1;min-width:0}
+.faq-i>summary svg{flex:none;width:18px;height:18px;color:var(--muted);transition:transform .2s ease}
+.faq-i[open]>summary svg{transform:rotate(180deg)}
+.faq-a{padding:0 15px 15px;font-size:14.5px;line-height:1.55}
+.faq-a p{margin:0;max-width:62ch}
+.faq-a p+p{margin-top:8px}
+.faq-a .link{font-size:inherit}
+.faq-i[open] .faq-a{animation:fadeUp .3s ease}
+.faq-more{margin:12px 0 0;font-size:13.5px;line-height:1.5;color:var(--muted);max-width:62ch}
+.faq-more .link{font-size:inherit}
+
+/* the platform's, at the foot of Cases */
+.faq{padding:4px 18px 40px}
+.faq-head h2{margin:0;font-size:19px;letter-spacing:-.02em;font-weight:800}
+.faq-head h2:focus{outline:none}
+.faq-head p{margin:4px 0 0;font-size:14px;color:var(--muted)}
+/* and as a sheet from a case page, where the card sits on the sheet */
+.sheet .faq-list{margin-top:0;background:var(--bg)}
+
+/* =====================================================================
    SCORE BREAKDOWN — the waterfall and the bloom
    ===================================================================== */
 #v-score{background:var(--bg)}
@@ -979,7 +1016,7 @@ line.bl-tick{stroke:var(--impact);stroke-width:2.4;stroke-linecap:round}
   .sheet{max-width:560px;margin-inline:auto}
 
   /* list views get a readable column */
-  #v-cases>.head,#v-cases>.list,#v-cases>.trendrow,#v-mine>.head,#v-mine>.list{max-width:780px;margin-inline:auto}
+  #v-cases>.head,#v-cases>.list,#v-cases>.trendrow,#v-cases>.faq,#v-mine>.head,#v-mine>.list{max-width:780px;margin-inline:auto}
   #v-mine .acct-card{max-width:420px}
   .search{max-width:520px}
   #caseList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -1015,7 +1052,10 @@ line.bl-tick{stroke:var(--impact);stroke-width:2.4;stroke-linecap:round}
     color:#fff;display:grid;place-items:center;backdrop-filter:blur(6px)}
 
   /* lists: more columns, more room */
-  #v-cases>.head,#v-cases>.list,#v-cases>.trendrow,#v-mine>.head,#v-mine>.list{max-width:1180px}
+  #v-cases>.head,#v-cases>.list,#v-cases>.trendrow,#v-cases>.faq,#v-mine>.head,#v-mine>.list{max-width:1180px}
+  /* the questions take the width as two columns: what this is, then the list */
+  #v-cases>.faq{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);column-gap:40px;align-items:start;padding-top:24px}
+  #v-cases>.faq .faq-list{margin-top:0}
   #v-mine>.head,#v-mine>.list{max-width:820px}
   .head{padding:26px 18px 12px}
   .head h1{font-size:34px}
@@ -1035,6 +1075,9 @@ line.bl-tick{stroke:var(--impact);stroke-width:2.4;stroke-linecap:round}
 /* ---------- 1400px and up ---------- */
 @media (min-width:1400px){
   #caseList{grid-template-columns:repeat(3,minmax(0,1fr))}
+  /* on the case columns above: the heading over the first, the list across the other two */
+  #v-cases>.faq{grid-template-columns:repeat(3,minmax(0,1fr));column-gap:12px}
+  #v-cases>.faq .faq-list{grid-column:2 / -1}
 }
 
 /* ---------- pointer affordances (laptops, not touch) ---------- */
@@ -1126,6 +1169,8 @@ line.bl-tick{stroke:var(--impact);stroke-width:2.4;stroke-linecap:round}
   .rw-seg:hover .rw-fill{filter:brightness(1.1)}
   .showmore:hover{border-color:var(--muted)}
   .chero-play:hover{background:rgba(255,255,255,.2)}
+  .head-faq:hover{color:var(--ink);border-color:var(--muted)}
+  .faq-i>summary:hover svg{color:var(--ink)}
 }
 
 /* the split ribbon's key, moved out of the SVG so nothing can collide */

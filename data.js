@@ -27,7 +27,7 @@ const CATS = {
 const STAGES = ["Pre-filing","Pleadings","Discovery","Trial","Decision","Appeal"];
 
 /* The payout split from the business plan. Kept in one place because it is
-   shown in three: the returns section, the pledge sheet and the FAQ sheet. */
+   shown in three: the returns section, the pledge sheet and the FAQ. */
 const SPLIT = {
   processingFee: 0.03,    /* taken out of funds raised */
   plaintiff: 0.53,
@@ -46,6 +46,12 @@ const SPLIT = {
    clips[].src is where a real vertical video file or URL goes. Until one
    exists, the clip plays as an animated caption card built from its beats,
    so the section is fully laid out and ready for the files to drop in.
+
+   faq[] is the questions written for this case, as [question, answer]. The
+   case page puts two more around them, worked out from the case's own
+   numbers: its biggest risk and when the money comes back. Keep figures the
+   page works out (chances, returns, the lock-in) out of these, so an answer
+   can never disagree with the screen it sits on.
    --------------------------------------------------------------------- */
 const CASES = [
 {
@@ -103,7 +109,9 @@ const CASES = [
   budget:[["Attorney and paralegal time",920000],["Expert witnesses",380000],["Discovery and depositions",320000],["Court and filing costs",180000],["Class notice and outreach",50000]],
   timeline:[["Plaintiffs recruited and interviewed","Jan 2026",1],["FOIA production received","Mar 2026",1],["Complaint filed","Jun 2026",1],["Government response due","Oct 2026",0],["Class certification motion","Early 2027",0]],
   updates:[["Aug 2026","Two more families joined as named plaintiffs after the first clip went out to backers. The government asked for a 30-day extension, which we did not oppose."],
-           ["Jul 2026","Forty-one organisations filed a joint statement of support. The full text is linked in the case file."]]
+           ["Jul 2026","Forty-one organisations filed a joint statement of support. The full text is linked in the case file."]],
+  faq:[["What if the agency misses the court's deadline anyway?","Then it goes back to the same judge, and that does happen. What an order changes is the cost of missing it: the case asks for quarterly reports to the court, which is what made the difference in the two comparable cases that held."],
+       ["Would winning mean more asylum claims are approved?","Not directly. The case asks for a schedule, not a result: claims would be heard sooner and decided on their merits, as they are now. Nobody is asking the court to change asylum law."]]
 },
 {
   id:"riverside-water", cat:"environment",
@@ -158,7 +166,9 @@ const CASES = [
   summary:["Residents of Riverside Township have received repeated notices that their tap water exceeds nitrate limits, while upstream discharge permits were renewed without new conditions.","The petition challenges those renewals and asks the court to require enforceable limits, independent monitoring and a remediation schedule."],
   budget:[["Water testing and hydrology experts",410000],["Attorney time",330000],["Community outreach and filings",120000],["Court costs",60000]],
   timeline:[["Independent water testing","Mar 2026",1],["Records requests completed","Jul 2026",1],["Petition drafted","Oct 2026",1],["Petition filed","Dec 2026",0],["Administrative record lodged","Early 2027",0]],
-  updates:[["Sep 2026","The state produced the last of the withheld permit files after our second demand letter. Nothing in them changes the petition; two documents strengthen it."]]
+  updates:[["Sep 2026","The state produced the last of the withheld permit files after our second demand letter. Nothing in them changes the petition; two documents strengthen it."]],
+  faq:[["Couldn't the state just renew the permits again?","If the court only sends them back for another look, yes, and that is the likeliest partial win. So the petition asks for enforceable limits, independent monitoring and a clean-up schedule, not just a fresh review."],
+       ["Where would a backer return come from?","The state statute lets the court award legal fees, so a ruling or a consent decree usually comes with a fee award. That is the pool the backers' share is paid from: real, but smaller than in a damages case."]]
 },
 {
   id:"maple-evictions", cat:"housing",
@@ -232,7 +242,9 @@ const CASES = [
   budget:[["Attorney time",340000],["Tenant organising and translation",140000],["Expert on renovation-permit practice",90000],["Court costs",70000]],
   timeline:[["Tenant association formed","Apr 2026",1],["Complaint filed","Jul 2026",1],["Injunction hearing held","Oct 2026",1],["Discovery","Ongoing",0],["Trial date","Late 2027",0]],
   updates:[["Sep 2026","The court paused all forty evictions pending trial. Nobody in the three buildings has to move while the case runs."],
-           ["Aug 2026","Discovery produced four renovation permits covering forty units. We have moved for partial summary judgment."]]
+           ["Aug 2026","Discovery produced four renovation permits covering forty units. We have moved for partial summary judgment."]],
+  faq:[["How strong is the renovation exception?","It only covers work substantial enough to make a unit uninhabitable while it is done. Discovery turned up four renovation permits for forty units, all of them for kitchen fixtures."],
+       ["If it settles, do the tenants keep their homes?","That is the aim. The tenant association voted for tenancy first and money second, and counsel is not authorised to trade the leases for a cheque."]]
 },
 {
   id:"farmworker-wages", cat:"labor",
@@ -287,7 +299,9 @@ const CASES = [
   summary:["Seasonal workers report being paid for fewer hours than they worked, with breaks deducted that were never taken.","The case seeks back wages, liquidated damages and a ruling on the automatic-deduction practice that reaches the other growers using the same system."],
   budget:[["Attorney time",640000],["Payroll forensic accountant",300000],["Depositions and interpreters",210000],["Court and notice costs",90000]],
   timeline:[["Complaint filed","Nov 2025",1],["Motion to dismiss denied","Mar 2026",1],["Collective conditionally certified","Jun 2026",1],["Discovery","Ongoing",0],["Trial date","2027",0]],
-  updates:[["Aug 2026","The court conditionally certified the collective. Notice goes out to 312 workers in three languages this month."]]
+  updates:[["Aug 2026","The court conditionally certified the collective. Notice goes out to 312 workers in three languages this month."]],
+  faq:[["Can the contractor actually pay?","That is the main risk. The case also names two growers who used the contractor, as joint employers, which is the realistic route to a judgment someone can pay. If that theory fails, the recovery shrinks a lot."],
+       ["Why is the 2023 payroll missing?","The contractor says it was lost when it changed software vendors. Counsel has asked the judge to hold that against them, but the case does not depend on it: the 2023 hours were rebuilt from the workers' own notebooks."]]
 },
 {
   id:"transit-access", cat:"disability",
@@ -345,7 +359,9 @@ const CASES = [
   summary:["Wheelchair users are routinely passed by buses with broken ramps or lifts, making trips to work, dialysis and medical appointments unreliable.","The case seeks a maintenance plan, repair deadlines and independent monitoring under the ADA. It is now in court-supervised mediation."],
   budget:[["Attorney time",400000],["Accessibility audit and expert",200000],["Monitoring during settlement",110000],["Court costs",70000]],
   timeline:[["Complaint filed","Sep 2025",1],["Ramp-failure logs produced","Feb 2026",1],["Mediation begun","May 2026",1],["Settlement terms","Fall 2026",0],["Decree entered and monitored","2027",0]],
-  updates:[["Sep 2026","Fourth mediation session held. The authority has agreed to publish repair times monthly. The independent monitor is still open."]]
+  updates:[["Sep 2026","Fourth mediation session held. The authority has agreed to publish repair times monthly. The independent monitor is still open."]],
+  faq:[["Why is the return so modest?","Because the case asks for working ramps, not damages. Backers are paid from the fee award the ADA allows, which is smaller than a damages recovery."],
+       ["Why is the independent monitor the sticking point?","It is the one part the authority cannot report on itself. In the three decrees lead counsel already monitors, it is what kept the numbers honest into year four, so it is not being dropped."]]
 },
 {
   id:"school-facial-rec", cat:"privacy",
@@ -401,7 +417,9 @@ const CASES = [
   summary:["The district installed face-scanning cameras at school entrances without a public vote or parental consent, under a contract that lets the vendor keep the records for seven years.","The planned suit asks the court to halt the programme and order deletion of everything collected."],
   budget:[["Attorney time",300000],["Technical expert and audit",140000],["Filing, records and notice",80000]],
   timeline:[["Records requests sent","Aug 2026",1],["Vendor contract obtained","Sep 2026",1],["Demand letter sent","Nov 2026",0],["Petition filed","Feb 2027",0]],
-  updates:[["Sep 2026","The district paused new enrolment into the programme but has not switched off the cameras or deleted anything."]]
+  updates:[["Sep 2026","The district paused new enrolment into the programme but has not switched off the cameras or deleted anything."]],
+  faq:[["Doesn't the district's pause end the case?","No. New enrolment is paused, but the cameras are still on and nothing has been deleted. A pause the district can undo at any time does not end a claim, though it does make urgent relief harder to win."],
+       ["Why list a case with odds this long?","Because of what a win would settle. It would be the first ruling in the state on biometrics in schools, and it would govern all 940 districts."]]
 }
 ];
 

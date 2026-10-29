@@ -3,12 +3,13 @@
 A no-build, static web app for discovering and pledging to public-interest legal
 cases, written to show the product running at full scale.
 
-- **Cases**: the home page. A live activity ticker, a "Trending now" rail, search and filters
+- **Cases**: the home page. A live activity ticker, a "Trending now" rail, search and
+  filters, and the platform FAQ at the foot
 - **Watch**: vertical feed of every clip on the platform, dealt so two reels
   from the same case are never adjacent, trending cases first
 - **Case page**: an interactive banner, a rolling comment highlight, why-it-matters
   stats, both headline scores, the discussion, the lock-in and stage runway, the
-  outcome fan, the clip rail, the people, and the filings underneath
+  outcome fan, the clip rail, the people, the case's own FAQ, and the filings underneath
 - **Score breakdown**: a waterfall for chance-to-win and a bloom for social impact
 - **Invest**: lock-in and the three outcomes shown in the flow, no payment taken
 - **Accounts**: email sign-up or Continue with Google, entirely optional
@@ -105,6 +106,32 @@ highlight above it puts one real voice on screen within a second of arriving.
 Stance tags and ratings are kept in the browser for the demo, because the shipped
 `supabase/schema.sql` has no column for either. Add `stance` to `comments` and a
 `ratings` table before this is real; `addComment()` marks the spot.
+
+## FAQ
+
+Two lists of questions. Each question is a row that opens to its answer, built
+on `<details>`, so a tap, a click or the keyboard all work with no script.
+
+- **The platform's**, at the foot of Cases, with an **FAQ** button beside the
+  page title that scrolls down to it. Seven questions on how investing works on
+  every case: donation or investment, whether money moves today, the lock-in,
+  where an award goes, how cases are chosen, what the two scores mean, and who
+  runs the case. A case page opens the same list as a sheet, so nobody loses
+  their place.
+- **Each case's**, between Team and Detail, with its own chip in the section
+  rail. It starts with the case's biggest risk (the factor that takes most off
+  its chance to win, and its chance of losing, linked to the breakdown) and ends
+  with when the money comes back (end year, stage, no early withdrawals). In
+  between are the questions written for that case: `faq` in `data.js`, as
+  `[question, answer]` pairs, edited in the admin under Details.
+
+No figure is typed into an answer. The split comes from `SPLIT`, the return and
+lock-in ranges from the live cases, and a case's risk and dates from its own
+factors and stages, so an answer can never disagree with the screen it sits on.
+Write a case's own questions the same way: what people ask about that case,
+answered in a sentence or two, leaving out the chances, returns and dates the
+page works out. An edited copy of a demo case saved before `faq` existed has no
+questions of its own until some are added in the admin.
 
 ## The clip feed
 

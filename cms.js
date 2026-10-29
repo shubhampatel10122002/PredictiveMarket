@@ -52,7 +52,7 @@ const LJ_CMS = (() => {
         firm: {name: "", kind: "", bio: "", stats: []}
       },
       rating: {counts: [0,0,0,0,0]},
-      summary: [], budget: [], timeline: [], updates: []
+      summary: [], budget: [], timeline: [], updates: [], faq: []
     };
   }
 
@@ -103,6 +103,7 @@ const LJ_CMS = (() => {
     c.budget = arr(c.budget).filter(Array.isArray).map(([k, v]) => [s(k), n(v)]);
     c.timeline = arr(c.timeline).filter(Array.isArray).map(([t, d, dn]) => [s(t), s(d), dn ? 1 : 0]);
     c.updates = arr(c.updates).filter(Array.isArray).map(([d, t]) => [s(d), s(t)]);
+    c.faq = arr(c.faq).filter(Array.isArray).map(([q, a]) => [s(q), s(a)]);
     return c;
   }
 
