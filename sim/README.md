@@ -2,9 +2,9 @@
 
 A ten-minute simulation of investing in litigation, for putting in front of
 investors. It runs at `/sim` on the same deployment as the site, the way the
-admin runs at `/admin`, and shares the site's code: `styles.css` for the look,
-`viz.js` for the score dial, the case artwork and the outcome fan, `data.js`
-for the payout split and the names in the live feed.
+admin runs at `/admin`, and shares the site's code: `styles.css` for the
+buttons, the sheets and the clip player, `viz.js` for the clip artwork and
+number formatting, `data.js` for the case categories.
 
 The investor gets 1,000 credits and three cases. Four years of litigation
 play out in ten minutes: interviews, filings, depositions, rulings, a jury.
@@ -24,7 +24,22 @@ refresh carries on where it was, paused.
 | `scenario.js` | The script: the three cases, what happens to them and when, the six simulated investors |
 | `engine.js` | The arithmetic: funding, prices, trades, payouts, the leaderboard and the crowd. No DOM, so it also runs in Node |
 | `sim.js` | The clock, the screens and the person playing |
-| `sim.css` | What only the simulation has: the clock bar, live cards, the feed, the breaking card, charts, results |
+| `sim.css` | The investor-facing look: the header, the clock bar, the cases table, the news, the breaking card, charts, results |
+
+## The look
+
+It is built for an investor who has ten minutes, so it looks like what they
+already use rather than like the site. It is light whatever the laptop is
+set to (`index.html` pins `data-theme="light"`). A header carries three tabs,
+Cases, Portfolio and Results, with the account value and cash at the right.
+The cases are a table, the way a brokerage lists stocks: price, its move
+since funding, win chance, your position, Buy and Sell. A case's page reads
+like a quote page: the price and its chart, key stats, the outcomes and what
+each pays, and a position panel beside them. Navy is for actions; green and
+red only for money going up and down.
+
+Words are kept short on purpose: an event is a headline and a sentence or
+two, and a case's long background is folded under "Background".
 
 ## How a run goes
 
@@ -36,9 +51,9 @@ refresh carries on where it was, paused.
    anchor backer takes the rest at 2:20.
 2. **The case runs.** Once a round is full, stakes trade. A big moment
    slides in as a breaking card with its clip, what it did to the chance to
-   win, and what it did to the price. Minor ones go to the feed.
-3. **Adding more, getting out.** A funded case takes no new money, so adding
-   more buys out a backer who wants to leave, at the market price. Selling
+   win, and what it did to the price. Minor ones go to the news list.
+3. **Buying later, getting out.** A funded case takes no new money, so Buy
+   on it buys out a backer who wants to leave, at the market price. Selling
    goes to someone on the waitlist at the market price less a 10% early-exit
    discount. Both are labelled as a preview of the planned exchange.
 4. **Endings.** Each case ends differently on purpose. The drug-data case had
@@ -59,8 +74,9 @@ A stake is priced at what it is expected to pay, moved by the crowd:
 The odds come from the script, event by event, and ease into the price over
 a few seconds. Mood is how the crowd took the latest news: it jumps with the
 event and fades with a 45-second half-life, which is how a stake can run hot
-after a headline and drift back. The case cards say so when it does
-("Running hot: 26% over the odds"). Noise is a small fixed wobble, the same
+after a headline and drift back. A case's page says so when it does
+("26% above fair value"; fair value is what the odds alone say). Noise is a
+small fixed wobble, the same
 on every run. When a case ends, the price is simply its payout.
 
 The six simulated investors on the leaderboard, and the 2,000 the result is
@@ -86,10 +102,12 @@ the clock stops for each big moment until Continue is pressed (off by
 default), and whether it holds while a clip is watched full screen (on by
 default, so watching never costs anyone a ruling).
 
-Nothing moves under the pointer while the clock runs. Each case card keeps
-one size whatever it shows, so Add more and Sell stay put, and every page
-ends with enough room to scroll its last buttons above the breaking card.
-On a case page the breaking card comes in on the left, clear of the panel.
+Nothing moves under the pointer while the clock runs. Each row of the cases
+table keeps its size whatever it shows, so Buy and Sell stay put, and every
+page ends with enough room to scroll its last buttons above the breaking
+card. On a case page the breaking card comes in on the left, clear of the
+position panel. After a trade nothing keeps focus, so the next Space plays
+the clock rather than reopening the order ticket.
 
 URL flags:
 

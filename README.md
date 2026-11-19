@@ -269,7 +269,9 @@ school, race-based lung testing, and Medicaid claims data sold to target drug
 ads) and plays four years of interviews, depositions, rulings and a verdict
 on a clock. The investor funds rounds, adds more by buying out leaving
 backers, sells to the waitlist, and finishes ranked against 2,000 simulated
-investors.
+investors. It looks like a brokerage account rather than like the site, and
+stays light even on a laptop set to dark mode, so investors can read it at a
+glance.
 
 It shares the site's `styles.css`, `data.js` and `viz.js` and adds its own
 files in `sim/`. It writes nothing to Supabase and tracks nothing, so it can

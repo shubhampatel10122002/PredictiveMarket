@@ -41,7 +41,6 @@ const mmss = s => { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + "
 const speedLabel = s => (s === .5 ? "½" : String(s)) + "×";
 const dateOf = t => SimEngine.dateAt(M, t).label;
 const ccol = id => `var(--c-${id})`;
-const pick = a => a[Math.floor(Math.random() * a.length)];
 const short = id => CASE[id].short;
 const flags = new URLSearchParams(location.search);
 const NOCLIPS = flags.has("noclips");
@@ -122,7 +121,14 @@ const MOTIFS = {
 };
 const motif = (c, fit="xMidYMid slice") =>
   `<svg class="motif" viewBox="0 0 400 300" preserveAspectRatio="${fit}" aria-hidden="true">${MOTIFS[c.motif] || ""}</svg>`;
-const art = (c, seed=0, fit) => heroArt(c, seed) + motif(c, fit);
+/* Each case's mark in lists, the way a brokerage shows a company's logo:
+   one line icon in the case's colour, on a tint of it */
+const LOGO = {
+  plant: svg('<path d="M3 20h18"/><path d="M4.5 20v-8l4.5 3v-3l4.5 3V7.5"/><path d="M13.5 20V7.5H16V4h2.5v3.5H20V20"/>', 1.8),
+  lungs: svg('<path d="M12 4v8.5M12 12.5l-2.4 1.8M12 12.5l2.4 1.8"/><path d="M9.6 8.2C6.8 7.6 4 10.4 4 15.4c0 2.5 1 4.1 2.8 4.1 2 0 3.2-1.6 3.2-4V10"/><path d="M14.4 8.2c2.8-.6 5.6 2.2 5.6 7.2 0 2.5-1 4.1-2.8 4.1-2 0-3.2-1.6-3.2-4V10"/>', 1.8),
+  data: svg('<path d="M12 3l7 3v5.4c0 4.4-2.9 8.1-7 9.6-4.1-1.5-7-5.2-7-9.6V6z"/><rect x="9" y="10.6" width="6" height="4.9" rx="1"/><path d="M10.3 10.6V9.2a1.7 1.7 0 0 1 3.4 0v1.4"/>', 1.8)
+};
+const logo = (c, cls="") => `<span class="logo ${cls}" style="--cat:${ccol(c.id)}" aria-hidden="true">${LOGO[c.motif] || ""}</span>`;
 
 /* ============ state ============
    Everything the person has done, and where the clock is. The cases
@@ -179,7 +185,7 @@ function compute(){
    `playing` is what the person asked for. A hold stops the clock without
    un-asking: a clip being watched full screen holds it, and letting go
    picks up where it was. */
-let playing = false, lastNow = 0, dataAt = 0, chatterAt = 0, lastSave = 0;
+let playing = false, lastNow = 0, dataAt = 0, lastSave = 0;
 const holds = new Set();
 const running = () => playing && !holds.size && !st.done;
 
@@ -249,8 +255,8 @@ function openRound(id, t, byMe, quiet){
   if(!quiet){
     flash(id);
     const p = SimEngine.caseAt(M, id, t + SimEngine.EASE, t).price;
-    toast(byMe ? `${I.check}<span><b>You closed the ${esc(short(id))} round.</b> The case starts now.</span>`
-               : `<span><b>${esc(short(id))} is fully funded.</b> The case starts, and stakes open at about ${mult(p)}.</span>`, 4400);
+    toast(byMe ? `${I.check}<span><b>You closed the ${esc(short(id))} round.</b> Trading opens.</span>`
+               : `<span><b>${esc(short(id))} is funded.</b> Trading opens at ${mult(p)}.</span>`, 4400);
     say(`${short(id)} is fully funded.`);
   }
   save();
@@ -272,12 +278,9 @@ function resolve(e, quiet){
   if(st.paid[id]) return;
   st.paid[id] = true;
   const tx = SimEngine.payout(st.book, id, SimEngine.payoutOf(CASE[id]), e.t);
-  if(tx){
-    addFeed(feedTx(tx), quiet);
-    if(!quiet) setTimeout(() => toast(tx.credits > 0
-      ? `${I.check}<span><b>+${cr(tx.credits)}</b> paid into your wallet from ${esc(short(id))}.</span>`
-      : `<span>Your ${esc(short(id))} stake paid nothing.</span>`, 4400), 1200);
-  }
+  if(tx && !quiet) setTimeout(() => toast(tx.credits > 0
+    ? `${I.check}<span><b>+${cr(tx.credits)}</b> paid out from ${esc(short(id))}.</span>`
+    : `<span>${esc(short(id))} lost. Your position paid nothing.</span>`, 4400), 1200);
 }
 
 function finish(quiet){
@@ -285,7 +288,7 @@ function finish(quiet){
   save();
   renderBarState();
   if(!quiet){
-    toast(`<span><b>Time's up.</b> Four years of litigation, done.</span>`, 3600);
+    toast(`<span><b>Time's up.</b> Here are your results.</span>`, 3600);
     setTimeout(() => { hideMoment(); go("end"); }, 2400);
   }
 }
@@ -302,8 +305,6 @@ function restart(){
 }
 
 /* ============ trades ============ */
-const COUNTER = () => ({name: pick(TICKER_NAMES), city: pick(TICKER_CITIES)});
-
 /* Into the round while it is open, at par. After that, from a backer who
    wants out, at the market. A round only takes what it still needs. */
 function invest(id, credits){
@@ -319,7 +320,6 @@ function invest(id, credits){
   } else {
     tx = SimEngine.buy(st.book, id, credits, s.price, st.t, "buy");
     if(!tx) return null;
-    tx.with = COUNTER();
   }
   after(tx);
   return tx;
@@ -330,12 +330,10 @@ function sell(id, share){
   if(!s.live || !s.hold) return null;
   const tx = SimEngine.sell(st.book, id, share, s.bid, st.t);
   if(!tx) return null;
-  tx.with = COUNTER();
   after(tx);
   return tx;
 }
 function after(tx){
-  addFeed(feedTx(tx), false);
   flash(tx.c);
   save();
   tick(performance.now(), true);
@@ -349,19 +347,16 @@ async function share(id){
   try{ await navigator.clipboard.writeText(`${c.head} I'm following it on LaunchJustice Live: ${url}`); }catch(e){}
   if(s.ended){ toast("Link copied."); return; }
   const opened = 12 + Math.round(Math.random() * 30 * (1 + Math.max(0, s.mood) * 4));
-  const joined = Math.max(1, Math.round(opened * (.12 + Math.max(0, s.mood))));
   st.shares[id] = (st.shares[id] || 0) + 1;
   st.reach += opened;
   save();
-  toast(`<span>Link copied. <b>${opened} people</b> opened it, and ${joined} ${s.status === "raising" ? "put credits into the round" : "joined the waitlist"}.</span>`);
-  addFeed({t: st.t, cls: "you", c: id, html: `<b>You</b> shared ${esc(short(id))}. ${opened} people opened the link.`}, false);
+  toast(`<span>Link copied. <b>${opened} people</b> opened it.</span>`);
 }
 
-/* ============ the feed ============
-   One list for everything happening: the script, the rounds, the simulated
-   investors on the leaderboard, a crowd of strangers, and the person
-   playing. On a reload it is rebuilt from the record; the strangers are
-   the only part not kept. */
+/* ============ the news ============
+   The headlines as they break, and each round as it fills: what moves a
+   price, and nothing else. Trades live in the portfolio's activity list.
+   On a reload it is rebuilt from the record. */
 const feed = [];
 let feedVer = 0, feedNew = 0;
 function addFeed(it, quiet){
@@ -381,8 +376,8 @@ function fxChips(e){
   const f = SimEngine.effectOf(M, e, st.open[e.c]);
   if(!f.live) return "";
   const out = [], dc = f.chance[1] - f.chance[0], dp = f.price[1] / f.price[0] - 1;
-  if(dc) out.push(`<span class="fx ${dc > 0 ? "up" : "down"}">${dc > 0 ? I.up : I.down}Chance to win ${f.chance[0]} → ${f.chance[1]}</span>`);
-  if(Math.abs(dp) >= .01) out.push(`<span class="fx ${dp > 0 ? "up" : "down"}">${dp > 0 ? I.up : I.down}Stake ${mult(f.price[0])} → ${mult(f.price[1])}</span>`);
+  if(Math.abs(dp) >= .01) out.push(`<span class="fx ${dp > 0 ? "up" : "down"}">${dp > 0 ? I.up : I.down}Price ${mult(f.price[0])} → ${mult(f.price[1])}</span>`);
+  if(dc) out.push(`<span class="fx ${dc > 0 ? "up" : "down"}">${dc > 0 ? I.up : I.down}Win chance ${f.chance[0]} → ${f.chance[1]}%</span>`);
   return out.length ? `<div class="fxs">${out.join("")}</div>` : "";
 }
 const thumb = (e, cls="") => `<button class="fd-thumb ${cls}" data-clip="${e.id}" aria-label="Watch: ${esc(e.title)}">${heroArt(CASE[e.c], 7)}${
@@ -392,62 +387,22 @@ const feedEvent = e => ({t: e.t, cls: "ev", c: e.c,
 function feedFund(id, t, byMe){
   const c = CASE[id], backers = Math.round(c.target / c.ticket);
   return {t, cls: "fund", c: id, html: `${metaRow(id, t, "<span>· Funding</span>")}<div class="fd-t">${byMe
-    ? `You closed the round: ${num(c.target)} credits from ${num(backers)} backers. The case begins.`
-    : `Fully funded: ${num(c.target)} credits from ${num(backers)} backers. ${esc(c.fundedNote || "")}`}</div>`};
+    ? "You closed the round" : "Fully funded"}: ${num(c.target)} cr from ${num(backers)} backers</div>`};
 }
-function feedTx(x){
+/* one trade, in a few words, for the activity list */
+function txText(x){
   const n = esc(short(x.c));
-  const html = x.kind === "round" ? `<b>You</b> put ${cr(x.credits)} into the ${n} round.`
-    : x.kind === "buy" ? `<b>You</b> bought ${cr(x.credits)} of ${n} at ${mult(x.price)}${x.with ? `, from ${esc(x.with.name)} in ${esc(x.with.city)}` : ""}.`
-    : x.kind === "sell" ? `<b>You</b> sold ${n} for ${cr(x.credits)} at ${mult(x.price)}${x.with ? `, to ${esc(x.with.name)} on the waitlist` : ""}.`
-    : x.credits > 0 ? `<b>You</b> were paid ${cr(x.credits)} by ${n}.` : `<b>Your</b> ${n} stake paid nothing.`;
-  return {t: x.t, cls: "you", c: x.c, html};
-}
-/* the leaderboard investors, as each of them moves */
-const personaFeed = [];
-PERSONAS.forEach(p => {
-  const byT = {};
-  p.run.b.txns.filter(x => x.kind !== "payout").forEach(x => (byT[x.t] ||= []).push(x));
-  Object.values(byT).forEach(xs => {
-    const who = `<b>${esc(p.name)}</b> <span class="badge-sim">simulated</span>`;
-    const html = xs.length > 1 && xs.every(x => x.kind === "round")
-      ? `${who} split ${cr(xs.reduce((a, x) => a + x.credits, 0))} across ${xs.map(x => esc(short(x.c))).join(", ")}.`
-      : xs.map(x => x.kind === "sell" ? `${who} sold their ${esc(short(x.c))} stake at ${mult(x.price)}.`
-        : x.kind === "buy" ? `${who} bought ${cr(x.credits)} of ${esc(short(x.c))} at ${mult(x.price)}.`
-        : `${who} put ${cr(x.credits)} into the ${esc(short(x.c))} round.`).join(" ");
-    personaFeed.push({t: xs[0].t, cls: "crowd", c: xs[0].c, html});
-  });
-});
-const personaSeen = new Set();
-function personaTick(){
-  personaFeed.forEach((it, k) => { if(it.t <= st.t && !personaSeen.has(k)){ personaSeen.add(k); addFeed(it, false); } });
+  return x.kind === "round" ? `Bought ${n} in the round`
+    : x.kind === "buy" ? `Bought ${n} at ${mult(x.price)}`
+    : x.kind === "sell" ? `Sold ${n} at ${mult(x.price)}`
+    : x.credits > 0 ? `${n} paid out` : `${n} paid nothing`;
 }
 function rebuildFeed(){
-  feed.length = 0; personaSeen.clear();
+  feed.length = 0;
   EVENTS.filter(e => st.fired[e.id]).forEach(e => feed.push(feedEvent(e)));
   IDS.filter(id => st.open[id] != null).forEach(id => feed.push(feedFund(id, st.open[id], !!st.closedByMe[id])));
-  st.book.txns.forEach(x => feed.push(feedTx(x)));
-  personaFeed.forEach((it, k) => { if(it.t <= st.t){ personaSeen.add(k); feed.push(it); } });
   feed.sort((a, b) => b.t - a.t);
   feedVer++; feedNew = 0;
-}
-/* a stranger doing something ordinary, shaped by how each case is going */
-function chatter(){
-  const live = IDS.filter(id => !snap.cases[id].ended);
-  if(!live.length) return;
-  const id = pick(live), s = snap.cases[id], n = esc(short(id));
-  const who = `<b>${esc(pick(TICKER_NAMES))}</b> in ${esc(pick(TICKER_CITIES))}`;
-  let html;
-  if(s.status === "raising") html = `${who} put ${cr(pick([25, 50, 100, 150, 250, 500, 1000]))} into the ${n} round.`;
-  else {
-    const r = Math.random(), m = s.mood;
-    if(m > .03 && r < .55) html = `${who} bought ${cr(pick([50, 100, 200, 400, 750]))} of ${n} at ${mult(s.price)}.`;
-    else if(m > .03 && r < .8) html = `${who} joined the ${n} waitlist, ${num(s.crowd.waitlist)} people long.`;
-    else if(m < -.03 && r < .6) html = `${who} sold ${pick(["a quarter of", "half of", "all of"])} a ${n} stake at ${mult(s.bid)}.`;
-    else if(m < -.03 && r < .8) html = `${num(s.crowd.sellers)} backers are offering ${n} stakes for sale.`;
-    else html = `${num(s.crowd.watching)} people are following ${n} right now.`;
-  }
-  addFeed({t: st.t, cls: "crowd", c: id, html}, false);
 }
 
 /* ============ clips ============
@@ -567,9 +522,9 @@ function renderTicks(){
   ticksSig = sig;
   const pos = t => (t / LEN * 100).toFixed(2) + "%";
   const ev = EVENTS.filter(e => st.fired[e.id]).map(e => { const lab = esc(`${dateOf(e.t)} · ${short(e.c)}: ${e.title}`);
-    return `<button class="sb-tick${e.major ? " major" : ""}" data-tick="${e.id}" style="left:${pos(e.t)};--tc:var(--cd-${e.c})" title="${lab}" aria-label="${lab}"><i></i></button>`; });
+    return `<button class="sb-tick${e.major ? " major" : ""}" data-tick="${e.id}" style="left:${pos(e.t)};--tc:var(--c-${e.c})" title="${lab}" aria-label="${lab}"><i></i></button>`; });
   const fund = IDS.filter(id => st.open[id] != null).map(id => { const lab = esc(`${short(id)}: fully funded`);
-    return `<button class="sb-tick fund" data-tick="${id}" style="left:${pos(st.open[id])};--tc:var(--cd-${id})" title="${lab}" aria-label="${lab}"><i></i></button>`; });
+    return `<button class="sb-tick fund" data-tick="${id}" style="left:${pos(st.open[id])};--tc:var(--c-${id})" title="${lab}" aria-label="${lab}"><i></i></button>`; });
   $("#sbTicks").innerHTML = fund.join("") + ev.join("");
 }
 function renderBarState(){
@@ -589,7 +544,7 @@ function tickClock(){
   d.textContent = dateOf(st.t);
   const left = (LEN - st.t) / st.speed;
   const sub = st.done ? "Simulation complete"
-    : !st.started ? `<b>${mmss(LEN / st.speed)}</b> run · press play`
+    : !st.started ? `<b>${mmss(LEN / st.speed)}</b> · press play`
     : playing && holds.size ? "Paused while you watch"
     : `<b>${mmss(left)}</b> left${playing ? "" : " · paused"}${st.speed !== 1 ? ` · ${speedLabel(st.speed)}` : ""}`;
   const el = $("#sbSub");
@@ -606,23 +561,19 @@ function val(k){
   const [what, id] = k.split(":"), s = id && snap.cases[id];
   switch(what){
     case "total": return [cr(snap.total)];
-    case "totalN": return [num(snap.total)];
     case "ret": return [pctS(snap.ret), snap.ret];
+    case "totalPl": return [`${signed(snap.total - START)} cr (${pctS(snap.ret)}) all time`, snap.ret];
     case "cash": return [cr(snap.cash)];
     case "incases": return [cr(snap.inCases)];
     case "paid": return [cr(snap.paidOut)];
     case "price": return [mult(s.price)];
-    case "since": return [pctS(s.price - 1) + " on the round", s.price - 1];
+    case "since": return [pctS(s.price - 1) + " since funding", s.price - 1];
     case "sinceS": return [pctS(s.price - 1), s.price - 1];
     case "pctN": return [Math.floor(s.pct * 100) + "%"];
-    case "pstat": return [s.status === "raising" ? `Round ${Math.floor(s.pct * 100)}% full` : s.live ? SCENARIO.stages[s.stage] : outcomeText(s)];
-    case "chance": return [String(s.chance)];
+    case "pstat": return [s.status === "raising" ? `Funding · ${Math.floor(s.pct * 100)}%` : s.live ? SCENARIO.stages[s.stage] : outcomeText(s)];
+    case "chanceP": return [s.chance + "%"];
     case "raised": return [`${crK(s.raised)} of ${crK(CASE[id].target)} cr`];
-    case "togo": return [num(Math.max(0, CASE[id].target - s.raised))];
     case "backers": return [num(s.crowd.backers)];
-    case "watching": return [num(s.crowd.watching)];
-    case "waitlist": return [num(s.crowd.waitlist)];
-    case "sellers": return [num(s.crowd.sellers)];
     case "value": return [cr(s.value)];
     case "invested": return [cr(s.stake.invested)];
     case "returned": return [cr(s.stake.returned)];
@@ -651,8 +602,6 @@ function patch(el, sig, html){
 let chartAt = 0;
 function tick(now, force){
   snap = compute();
-  if(running() && now - chatterAt > Math.max(1100, 2600 / st.speed)){ chatterAt = now; chatter(); }
-  personaTick();
   renderTicks();
   const charts = force || now - chartAt > 480;
   if(charts) chartAt = now;
@@ -810,7 +759,7 @@ function marketModel(){
   const now = st.t, series = IDS.map(id => ({color: ccol(id), label: short(id), pts: priceSeries(id, now)}));
   const yMax = niceMax(Math.max(1.5, ...series.flatMap(s => s.pts.map(p => p[1]))) * 1.12, [1.5, 2, 2.5, 3, 3.5, 4]);
   return {now, cols: IDS.map(short), padR: 108,
-    empty: series.every(s => !s.pts.length) ? "The first stakes start trading when a round fills." : "",
+    empty: series.every(s => !s.pts.length) ? "Prices start when the first round fills." : "",
     svg: (W, H) => lineChart(series, {W, H, now, yMax, yTicks: [0, 1, 2, 3, 4].filter(v => v <= yMax), yFmt: v => v + "×", endFmt: mult,
       base: {v: 1, label: "Round price"}, padR: 108, aria: "What one credit from each funding round is worth over time"}),
     read: t => IDS.map(id => { const o = st.open[id]; return {color: ccol(id), label: short(id),
@@ -822,7 +771,7 @@ function caseModel(id){
   const marks = open == null ? [] : c.events.filter(e => st.fired[e.id] && e.t >= open && (e.odds || e.end))
     .map(e => ({t: e.t, v: e.end ? SimEngine.payoutOf(c) : SimEngine.priceAt(M, id, e.t - .01, open), major: e.major, color: ccol(id)}));
   return {now, cols: [short(id)], padR: 90,
-    empty: !pts.length ? "Stakes start trading the moment the round is full." : "",
+    empty: !pts.length ? "Trading starts when the round is full." : "",
     svg: (W, H) => lineChart([{color: ccol(id), label: "Now", pts, area: true}],
       {W, H, now, yMax, yTicks: [0, 1, 2, 3, 4].filter(v => v <= yMax), yFmt: v => v + "×", endFmt: mult, base: {v: 1, label: "Round price"},
        marks, padR: 90, aria: `What one credit from the ${short(id)} round is worth over time`}),
@@ -838,182 +787,144 @@ function portModel(){
   const marks = st.book.txns.filter(x => x.kind !== "payout").map(x => ({t: x.t, v: vAt(mine, x.t), you: true}));
   return {now, cols: ["You", "Even split"], padR: 96,
     svg: (W, H) => lineChart([{color: "var(--ink-soft)", label: "Even split", pts: bench, width: 1.5},
-                          {color: "var(--ink)", label: "You", pts: mine, area: true}],
+                          {color: "var(--navy)", label: "You", pts: mine, area: true}],
       {W, H, now, yMax, yTicks: [0, 1000, 2000, 3000, 4000].filter(v => v <= yMax), yFmt: v => v ? v / 1000 + "k" : "0", endFmt: num,
        base: {v: START, label: "Start"}, marks, padR: 96, aria: "Your total value over time, against an even split held to the end"}),
-    read: t => [{color: "var(--ink)", label: "You", v: cr(vAt(mine, t))}, {color: "var(--ink-soft)", label: "Even split", v: cr(vAt(bench, t))}]};
+    read: t => [{color: "var(--navy)", label: "You", v: cr(vAt(mine, t))}, {color: "var(--ink-soft)", label: "Even split", v: cr(vAt(bench, t))}]};
 }
 
 /* small marks */
+/* a price since funding, against a dashed line at the round price: green
+   above it, red below, the way a brokerage colours a stock's line */
 function sparkLine(id){
   const pts = priceSeries(id, st.t);
   if(pts.length < 2) return "";
-  const W = 300, H = 46, t0 = pts[0][0], t1 = Math.max(t0 + 30, pts[pts.length - 1][0]);
+  const W = 300, H = 40, t0 = pts[0][0], t1 = Math.max(t0 + 30, pts[pts.length - 1][0]);
   const hi = Math.max(1.2, ...pts.map(p => p[1])) * 1.08;
   const x = t => (t - t0) / (t1 - t0) * (W - 8) + 2, y = v => 4 + (H - 8) * (1 - v / hi);
   const d = pts.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`).join("");
-  return `<svg class="scard-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-    <line x1="0" x2="${W}" y1="${y(1).toFixed(1)}" y2="${y(1).toFixed(1)}" style="stroke:var(--lc-base);stroke-width:1" vector-effect="non-scaling-stroke"/>
-    <path d="${d}" style="fill:none;stroke:${ccol(id)};stroke-width:2;stroke-linejoin:round" vector-effect="non-scaling-stroke"/></svg>`;
+  const up = pts[pts.length - 1][1] >= 1;
+  return `<svg class="cspark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <line class="cspark-base" x1="0" x2="${W}" y1="${y(1).toFixed(1)}" y2="${y(1).toFixed(1)}" vector-effect="non-scaling-stroke"/>
+    <path d="${d}" style="stroke:var(--${up ? "up" : "down"})" vector-effect="non-scaling-stroke"/></svg>`;
 }
-/* while a round is open, its chart slot shows the round filling: share of
-   the target raised so far, against a hairline at full. Until the clock
-   has started, nobody else is coming, and the slot says so */
-function fundSpark(id){
-  if(!st.started) return `<p class="scard-wait">Backers arrive once the clock starts.</p>`;
-  const c = CASE[id], now = st.t, W = 300, H = 46, t1 = Math.max(30, now);
-  const mine = st.book.txns.filter(x => x.c === id && x.kind === "round");
-  const at = t => Math.min(1, SimEngine.crowdShare(c, t) + mine.reduce((a, x) => a + (x.t <= t ? x.credits : 0), 0) / c.target);
-  const pts = [];
-  for(let t = 0; t < now; t += Math.max(1, now / 120)) pts.push([t, at(t)]);
-  pts.push([now, at(now)]);
-  const x = t => t / t1 * (W - 8) + 2, y = v => 4 + (H - 8) * (1 - v);
-  const d = pts.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`).join("");
-  return `<svg class="scard-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-    <line x1="0" x2="${W}" y1="${y(1).toFixed(1)}" y2="${y(1).toFixed(1)}" style="stroke:var(--lc-base);stroke-width:1" vector-effect="non-scaling-stroke"/>
-    <path d="${d}L${x(now).toFixed(1)} ${y(0)}L${x(0)} ${y(0)}Z" style="fill:${ccol(id)};opacity:.1"/>
-    <path d="${d}" style="fill:none;stroke:${ccol(id)};stroke-width:2;stroke-linejoin:round" vector-effect="non-scaling-stroke"/></svg>`;
-}
-function walletSpark(){
-  const pts = valueSeries(st.book.txns, {...SimEngine.crowdOpens(M), ...st.open}, Math.max(2, st.t), 4);
-  const W = 200, H = 34, hi = Math.max(1100, ...pts.map(p => p[1])) * 1.05, lo = Math.min(900, ...pts.map(p => p[1])) * .95;
-  const x = t => t / LEN * W, y = v => 2 + (H - 4) * (1 - (v - lo) / (hi - lo));
-  const d = pts.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`).join("");
-  return `<svg class="nw-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-    <line x1="0" x2="${W}" y1="${y(START).toFixed(1)}" y2="${y(START).toFixed(1)}" style="stroke:var(--lc-base);stroke-width:1" vector-effect="non-scaling-stroke"/>
-    <path d="${d}" style="fill:none;stroke:var(--ink);stroke-width:1.8" vector-effect="non-scaling-stroke"/></svg>`;
-}
+/* while a round is open, its row shows it filling */
+const fundCell = s => `<div class="meter"><i data-w="${s.id}"></i></div><small><b data-v="pctN:${s.id}"></b> funded</small>`;
 
-/* ============ the wallet, in the sidebar ============ */
-let walletAt = 0;
-function renderWallet(force){
+/* ============ the account, in the header ============ */
+function renderWallet(){
   const el = $("#navWallet"); if(!el) return;
-  patch(el, "w", `<div class="nw">
-    <span class="nw-h">Your credits</span>
-    <div class="nw-total"><b data-v="totalN"></b><small data-v="ret"></small></div>
-    <div data-part="wspark"></div>
-    <div class="nw-rows"><span>Cash</span><b data-v="cash"></b><span>In cases</span><b data-v="incases"></b><span>Cashed out</span><b data-v="paid"></b></div>
-    <div class="nw-foot"><button data-act="keys">Shortcuts</button><button data-act="restart">Restart</button></div></div>`);
-  const now = performance.now();
-  if(force || now - walletAt > 1000){ walletAt = now; el.querySelector("[data-part=wspark]").innerHTML = walletSpark(); }
+  patch(el, "w", `<div class="hw"><span>Account value</span><div><b data-v="total"></b><em data-v="ret"></em></div></div>
+    <div class="hw"><span>Cash</span><div><b data-v="cash"></b></div></div>`);
 }
 
-/* ============ home ============ */
+/* ============ cases ============
+   The three cases listed the way a brokerage lists stocks: one row each,
+   with the price, its move since funding, your position and the buttons.
+   Beside them, the news that moves the prices. */
 function renderHome(){
   $("#v-home").innerHTML = `<div class="home">
     <div class="home-main">
+      ${st.started ? "" : introHTML()}
+      <section class="card ct" aria-label="Cases">
+        <div class="card-h"><h2>Cases</h2></div>
+        <div class="ct-head" aria-hidden="true"><span></span><span>Case</span><span>Stage</span><span>Win chance</span><span class="c-imp">Impact</span><span class="c-chart"></span><span class="r">Price</span><span class="r">Your position</span><span></span></div>
+        ${IDS.map(rowHTML).join("")}
+      </section>
       ${st.started ? `<section class="card mk">
-        <div class="mk-head"><div><h2>What a credit from each round is worth</h2><p>1× is what the round paid. Each line starts the day its case is fully funded.</p></div>${tableToggle("market")}</div>
+        <div class="card-h"><h2>Prices</h2>${tableToggle("market")}</div>
         <div class="mk-legend">${IDS.map(id => `<span style="--cat:${ccol(id)}"><i></i>${esc(short(id))} <b data-mk="${id}"></b></span>`).join("")}</div>
-        <div class="lc" data-chart="market"></div></section>` : introHTML()}
-      <div class="scards">${IDS.map(cardHTML).join("")}</div>
+        <div class="lc" data-chart="market"></div></section>` : ""}
     </div>
-    <aside class="card fd" aria-label="Live feed">
-      <div class="fd-head"><i></i><h2>Live</h2><small>all three cases</small></div>
+    <aside class="card fd" aria-label="News">
+      <div class="card-h"><h2><i class="livedot"></i>News</h2></div>
       <ol class="fd-list" id="feedList"></ol>
     </aside></div>`;
   feedDrawn = -1;
   if(snap) tickHome(true, true);
 }
 function introHTML(){
-  return `<section class="intro">
-    <div class="intro-eyebrow"><i></i>LaunchJustice Live · a ten-minute simulation</div>
-    <h1>Four years of litigation. Ten minutes. <span class="mark">${num(START)} credits.</span></h1>
-    <p class="intro-lead">Three injustices, three fictional lawsuits. Back the ones you believe in, then watch interviews, depositions and rulings move the odds, and what your stake is worth. Add more when the news is good. Sell to someone on the waitlist when it isn't.</p>
-    <ol class="intro-steps">
-      <li><b>Fund a case</b><span>Every case has to raise its whole budget before it can start. Get in during the round, at 1×. Rounds close the moment they're full.</span></li>
-      <li><b>Watch it unfold</b><span>Each interview, filing and ruling arrives with its clip, and moves the chance to win and the price of a stake.</span></li>
-      <li><b>Make your calls</b><span>Once a case is funded, add more by buying out a backer who wants to leave, or sell your own stake to the waitlist.</span></li>
-    </ol>
-    <div class="intro-cta"><button class="btn primary" data-act="start">${I.play}Start the clock</button>
-      <span>or invest first: the rounds are open now.</span></div>
-    <p class="intro-fine">A simulation. The cases are fictional, the credits are virtual and every event is scripted. Nothing here is investment advice.</p>
+  return `<section class="welcome">
+    <div class="wl-text">
+      <div class="eyebrow"><i></i>Live simulation · ten minutes</div>
+      <h1>Invest ${num(START)} credits in three lawsuits.</h1>
+      <p>Four years of rulings play out in ten minutes. Every ruling moves the price.</p>
+      <ol class="steps"><li>Buy a position</li><li>Watch the news</li><li>Hold or sell</li></ol>
+    </div>
+    <div class="wl-cta"><button class="btn primary" data-act="start">${I.play}Start the clock</button>
+      <small>Or buy first: the funding rounds are open.</small></div>
+    <p class="fine">Fictional cases and virtual credits. Not investment advice.</p>
   </section>`;
 }
-function cardHTML(id){
+/* a whole row opens its case; its buttons do what they say */
+function rowHTML(id){
   const c = CASE[id];
-  return `<article class="scard" data-id="${id}" style="--cat:${ccol(id)}">
-    <button class="scard-art" data-open="${id}" aria-label="Open the ${esc(short(id))} case">${art(c, 2)}
-      <span class="scard-cat"><span class="dot"></span>${esc(CATS[c.cat].label)} · ${esc(short(id))}</span>
-      <span data-part="pill"></span></button>
-    <div class="scard-body">
-      <h3 class="scard-head"><button data-open="${id}">${esc(c.head)}</button></h3>
-      <p class="scard-who">${esc(c.defendant)} · ${esc(c.court)}</p>
-      <div class="scard-score" data-part="score"></div>
-      <div class="scard-money"><div data-part="mtop"></div><div data-part="mchart"></div><div data-part="mchip"></div></div>
-      <p class="scard-news" data-part="news"></p>
-      <div data-part="mine"></div>
-      <div class="scard-acts" data-part="acts"></div>
-    </div></article>`;
+  return `<article class="crow" data-id="${id}" data-open="${id}" style="--cat:${ccol(id)}">
+    ${logo(c)}
+    <div class="crow-name"><h3><button data-open="${id}">${esc(short(id))}</button></h3><small>${esc(CATS[c.cat].label)}</small></div>
+    <div class="crow-meta">
+      <div class="crow-stage" data-part="stage"></div>
+      <div class="crow-win"><b data-v="chanceP:${id}"></b><small> win chance</small></div>
+      <div class="crow-imp c-imp"><b>${c.impact}</b><small> impact</small></div>
+    </div>
+    <div class="crow-chart c-chart" data-part="chart"></div>
+    <div class="crow-price" data-part="price"></div>
+    <div class="crow-pos" data-part="pos"></div>
+    <div class="crow-acts" data-part="acts"></div>
+  </article>`;
 }
 const STATUS_WORD = {won: "Won", settled: "Settled", lost: "Lost"};
-function pillHTML(s){
-  const c = s.c;
-  const label = s.status === "raising" ? `Raising · ${Math.floor(s.pct * 100)}%`
-    : s.status === "live" ? SCENARIO.stages[s.stage] : s.status === "won" ? `Won · ${mult(c.winMult)}`
-    : s.status === "settled" ? `Settled · ${mult(c.settleMult)}` : "Lost · 0×";
-  return `<span class="spill ${s.status}"><i></i>${esc(label)}</span>`;
+/* where a case is: its round, its stage, or how it ended */
+function stageHTML(s){
+  /* the share funded is in the progress bar beside it, where there is room for one */
+  if(s.status === "raising") return `<span class="st-fund">Funding<b class="st-pct"> <span data-v="pctN:${s.id}"></span></b></span>`;
+  if(s.live) return esc(SCENARIO.stages[s.stage]);
+  return `<span class="spill ${s.status}">${STATUS_WORD[s.status]}</span>`;
 }
-/* when the crowd has run a stake well past or below what the odds say */
-function hotHTML(s){
-  if(!s.live || !s.ev) return "";
-  const r = s.price / s.ev - 1;
-  if(r >= .12) return `<span class="hot">${I.flame}<span><span class="hot-k">Running hot: </span>${Math.round(r * 100)}% over the odds</span></span>`;
-  if(r <= -.1) return `<span class="hot cold">${I.tag}<span><span class="hot-k">On sale: </span>${Math.round(-r * 100)}% under the odds</span></span>`;
-  return "";
-}
-function scoreHTML(s){
-  return `${gauge(46, s.chance, s.c.impact)}
-    <div class="sc-read"><span><i class="sc-dotm"></i><b data-v="chance:${s.id}"></b> chance to win</span><span><i class="sc-doti"></i><b>${s.c.impact}</b> social impact</span></div>`;
-}
-/* The money part of a card is three slots of fixed height: the figure, its
-   chart, and room for the running-hot chip. What fills them changes as the
-   round fills, the market moves and the case ends; the slots never do, so
-   the buttons under them stay exactly where they are. */
-function moneyTop(s){
+const stagePill = s => s.ended ? `<span class="spill ${s.status}">${STATUS_WORD[s.status]}</span>`
+  : `<span class="ctag">${s.status === "raising" ? "Funding round" : esc(SCENARIO.stages[s.stage])}</span>`;
+function priceHTML(s){
   const id = s.id;
-  if(s.status === "raising") return `<div class="meter"><i data-w="${id}"></i></div>
-    <div class="meter-nums"><span><b data-v="raised:${id}"></b></span><span><b data-v="backers:${id}"></b> backers</span></div>`;
-  return s.live ? `<div class="sc-pricerow"><b data-v="price:${id}"></b><span>a credit from the round</span><em data-v="sinceS:${id}"></em></div>`
-    : `<div class="sc-pricerow"><b>${s.payout > 0 ? mult(s.payout) : "0×"}</b><span>${s.payout > 0 ? "paid per credit in the round" : "stakes paid nothing"}</span></div>`;
+  if(s.status === "raising") return `<b>1.00×</b><span class="chg">Round</span>`;
+  if(s.live) return `<b data-v="price:${id}"></b><span class="chg" data-v="sinceS:${id}"></span>`;
+  return `<b>${s.payout > 0 ? mult(s.payout) : "0×"}</b><span class="chg" data-sign="${s.payout > 0 ? "up" : "down"}">Final</span>`;
 }
-function newsHTML(s){
-  const e = s.last;
-  if(!e) return `<small>${s.status === "raising" ? "Round open" : ""}</small><span>${s.status === "raising"
-    ? `Needs ${crK(s.c.target)} credits to start.` : "The case has begun."}</span>`;
-  return `<small>${dateOf(e.t)}</small><span>${esc(e.title)}</span>`;
-}
-function mineHTML(s){
-  if(!s.hold && !s.stake.invested) return `<div class="scard-mine none"><span>No stake yet</span></div>`;
-  if(!s.hold) return `<div class="scard-mine"><span>Got back <b>${cr(s.stake.returned)}</b></span><em data-v="plpct:${s.id}"></em></div>`;
-  return `<div class="scard-mine"><span>Your stake <b data-v="value:${s.id}"></b></span><em data-v="plpct:${s.id}"></em></div>`;
+function posCell(s){
+  const id = s.id;
+  if(s.hold) return `<b data-v="value:${id}"></b><em data-v="plpct:${id}"></em>`;
+  if(s.stake.invested) return `<b>Closed</b><em data-sign="${signOf(s.pl)}">${signed(s.pl)} cr</em>`;
+  return `<span class="none">—</span>`;
 }
 function actsHTML(s){
   const id = s.id, cash = snap.cash >= 1;
-  if(s.status === "raising") return `<button class="btn primary" data-act="in" data-id="${id}"${cash ? "" : " disabled"}>Invest</button><button class="btn line" data-open="${id}">Details</button>`;
-  if(s.live) return `<button class="btn primary" data-act="in" data-id="${id}"${cash ? "" : " disabled"}>${s.hold ? "Add more" : "Buy in"}</button>${
-    s.hold ? `<button class="btn line" data-act="out" data-id="${id}">Sell</button>` : `<button class="btn line" data-open="${id}">Details</button>`}`;
-  return `<button class="btn line" data-open="${id}">See how it ended</button>`;
+  if(s.ended) return `<button class="btn line" data-open="${id}">View</button>`;
+  return `<button class="btn primary" data-act="in" data-id="${id}"${cash ? "" : " disabled"}>Buy</button>${s.status === "raising" ? ""
+    : `<button class="btn line" data-act="out" data-id="${id}"${s.hold ? "" : " disabled"}>Sell</button>`}`;
+}
+/* when the crowd has run a price well past or below what the odds say */
+function hotHTML(s){
+  if(!s.live || !s.ev) return "";
+  const r = s.price / s.ev - 1;
+  if(r >= .12) return `<span class="hot">${I.flame}${Math.round(r * 100)}% above fair value</span>`;
+  if(r <= -.1) return `<span class="hot cold">${I.tag}${Math.round(-r * 100)}% below fair value</span>`;
+  return "";
 }
 let feedDrawn = -1;
 function tickHome(force, charts){
   const v = $("#v-home");
   IDS.forEach(id => {
-    const s = snap.cases[id], card = v.querySelector(`.scard[data-id="${id}"]`);
-    if(!card) return;
-    const q = n => card.querySelector(`[data-part="${n}"]`);
-    patch(q("pill"), s.status + (s.status === "raising" ? Math.floor(s.pct * 100) : s.stage), () => pillHTML(s));
-    patch(q("score"), s.status + s.chance, () => scoreHTML(s));
-    patch(q("mtop"), s.status, () => moneyTop(s));
-    /* the chart moves with the clock, so it redraws once a second */
-    patch(q("mchart"), s.ended ? s.status : s.status + Math.floor(st.t) + st.started, () => s.status === "raising" ? fundSpark(id) : sparkLine(id));
-    patch(q("mchip"), hotHTML(s), () => hotHTML(s));
-    patch(q("news"), s.last ? s.last.id : "none" + s.status, () => newsHTML(s));
-    patch(q("mine"), (s.hold ? "h" : "n") + Math.round(s.stake.invested) + "/" + Math.round(s.stake.returned), () => mineHTML(s));
+    const s = snap.cases[id], row = v.querySelector(`.crow[data-id="${id}"]`);
+    if(!row) return;
+    const q = n => row.querySelector(`[data-part="${n}"]`);
+    patch(q("stage"), s.status + s.stage, () => stageHTML(s));
+    /* a price line moves with the clock, so it redraws once a second */
+    patch(q("chart"), s.status === "raising" ? "r" : s.ended ? s.status : s.status + Math.floor(st.t), () => s.status === "raising" ? fundCell(s) : sparkLine(id));
+    patch(q("price"), s.status, () => priceHTML(s));
+    patch(q("pos"), (s.hold ? "h" : "n") + Math.round(s.stake.invested) + "/" + Math.round(s.stake.returned), () => posCell(s));
     patch(q("acts"), s.status + (s.hold ? "h" : "") + (snap.cash >= 1 ? "c" : ""), () => actsHTML(s));
   });
   IDS.forEach(id => { const b = v.querySelector(`[data-mk="${id}"]`); if(b){ const s = snap.cases[id];
-    const t = s.status === "raising" ? `raising ${Math.floor(s.pct * 100)}%` : mult(s.price);
+    const t = s.status === "raising" ? "funding" : mult(s.price);
     if(b.textContent !== t) b.textContent = t; } });
   if(charts) drawChart(v.querySelector('[data-chart="market"]'), marketModel());
   renderFeed(force);
@@ -1022,21 +933,24 @@ let feedOpen = false;
 function renderFeed(force){
   const el = $("#feedList"); if(!el) return;
   if(!force && feedDrawn === feedVer) return;
-  const n = feedOpen ? 80 : innerWidth >= 1024 ? 60 : 8, items = feed.slice(0, n);
+  const n = feedOpen ? 80 : innerWidth >= 1200 ? 40 : 6, items = feed.slice(0, n);
   el.innerHTML = items.length ? items.map((it, k) => `<li class="fd-${it.cls}${k < Math.min(feedNew, 3) ? " in" : ""}" style="--cat:${ccol(it.c)}">${it.html}</li>`).join("")
-    : `<li class="fd-crowd">Funding opens on three cases. The feed fills once the clock starts.</li>`;
+    : `<li class="fd-empty">Headlines appear here once the clock starts.</li>`;
   if(feed.length > n) el.insertAdjacentHTML("beforeend", `<li class="fd-more-li"><button class="fd-more" data-act="more">Show more</button></li>`);
   feedNew = 0;
   feedDrawn = feedVer;
 }
 function flash(id){
-  const card = $(`.scard[data-id="${id}"]`);
-  if(!card) return;
-  card.classList.remove("flash"); void card.offsetWidth; card.classList.add("flash");
-  setTimeout(() => card.classList.remove("flash"), 1600);
+  const row = $(`.crow[data-id="${id}"]`);
+  if(!row) return;
+  row.classList.remove("flash"); void row.offsetWidth; row.classList.add("flash");
+  setTimeout(() => row.classList.remove("flash"), 1600);
 }
 
-/* ============ a case ============ */
+/* ============ a case ============
+   Laid out like a stock's page: the price and its chart, your position and
+   the buttons beside them, then the numbers, the news and the case itself.
+   The long background is folded away until someone asks for it. */
 let caseId = null;
 function openCase(id){
   if(!CASE[id]) return;
@@ -1045,148 +959,161 @@ function openCase(id){
   go("case");
   $("#v-case").scrollTop = 0;
 }
+const backTo = () => ({home: "Cases", port: "Portfolio", end: "Results"})[view === "case" ? prevView : view] || "Cases";
 function renderCase(){
-  const id = caseId, c = CASE[id];
+  const id = caseId, c = CASE[id], pp = c.people;
   $("#v-case").innerHTML = `<div class="sc-wrap" style="--cat:${ccol(id)}">
-    <header class="sc-hero">
-      <div class="sc-art">${heroArt(c, 9)}${motif(c, "xMaxYMid meet")}</div>
-      <button class="back" data-back>${I.back}Back</button>
-      <span data-part="pill"></span>
-      <div class="sc-hero-in">
-        <span class="cpill"><span class="dot"></span>${esc(CATS[c.cat].label)} · ${esc(short(id))}</span>
-        <h1>${esc(c.head)}</h1>
-        <p>${esc(c.caseName)} · ${esc(c.court)}</p>
+    <button class="crumb" data-back>${I.back}${backTo()}</button>
+    <header class="sc-head">
+      <div class="sc-banner">${motif(c, "xMaxYMid meet")}</div>
+      ${logo(c, "lg")}
+      <div class="sc-title">
+        <div class="sc-tags"><span class="ctag">${esc(CATS[c.cat].label)}</span><span data-part="pill"></span></div>
+        <h1>${esc(short(id))}</h1>
+        <p>${esc(c.head)}</p>
       </div>
     </header>
     <div class="sc-body">
-      <div class="sc-side"><section class="card sc-panel" data-part="panel"></section></div>
-      <div class="sc-main">
-        <section class="card sc-sec"><h2>Where it is</h2><ol class="stg" data-part="stages"></ol></section>
-        <section class="card sc-sec"><div class="mk-head"><div><h2>What a credit from the round is worth</h2>
-          <p class="sub" style="margin:2px 0 0">1× is what the round paid. Filled dots are the big moments.</p></div>${tableToggle("case")}</div>
-          <div class="lc" data-chart="case" style="margin-top:8px"></div></section>
-        <section class="card sc-sec"><h2>What's happened</h2><div data-part="story"></div></section>
-        <section class="card sc-sec"><h2 data-part="fanh"></h2><p class="sub">${esc(c.outcomes)}</p><div class="fanbox" data-part="fan"></div></section>
-        <section class="card sc-sec"><h2>The case</h2>
-          <div class="sc-facts">${c.facts.map(([b, s]) => `<div><b>${esc(b)}</b><span>${esc(s)}</span></div>`).join("")}</div>
-          <div class="prose" style="font-size:16px">${c.summary.map(p => `<p>${esc(p)}</p>`).join("")}</div>
-          <div class="sc-people">${["plaintiff", "attorney"].map(k => { const p = c.people[k]; return `<div class="bio"><span class="av lg">${esc(p.name.charAt(0))}</span>
-            <div><b>${esc(p.name)}</b><span class="bio-role">${esc(p.role)}</span><p>${esc(p.bio)}</p></div></div>`; }).join("")}</div>
-          <h3 class="sub-h">What the ${num(c.target)} credits pay for</h3>
-          <div class="budget"><div class="bg-ribbon">${c.budget.map(([k, n], i) => `<span class="bg-seg" style="--w:${(n / c.target * 100).toFixed(2)}%;--i:${i}" title="${esc(k)}"></span>`).join("")}</div>
+      <section class="card sc-pricecard">
+        <div class="sc-ph"><div class="sc-price" data-part="price"></div>${tableToggle("case")}</div>
+        <div class="lc" data-chart="case"></div>
+        <ol class="stg" data-part="stages" aria-label="Stage"></ol>
+      </section>
+      <section class="card sc-panel" data-part="panel" aria-label="Your position"></section>
+      <section class="card sc-sec"><h2>Key stats</h2><div data-part="stats"></div></section>
+      <section class="card sc-sec"><h2>News</h2><div data-part="story"></div></section>
+      <section class="card sc-sec"><h2>Impact so far</h2><ul class="sc-impacts" data-part="impacts"></ul></section>
+      <section class="card sc-sec"><h2>About the case</h2>
+        <div class="sc-facts">${c.facts.map(([b, s]) => `<div><b>${esc(b)}</b><span>${esc(s)}</span></div>`).join("")}</div>
+        <dl class="sc-who">
+          <dt>Case</dt><dd>${esc(c.caseName)}</dd>
+          <dt>Court</dt><dd>${esc(c.court)}</dd>
+          <dt>Plaintiff</dt><dd>${esc(pp.plaintiff.name)}<small>${esc(pp.plaintiff.role)}</small></dd>
+          <dt>Counsel</dt><dd>${esc(pp.attorney.name)}<small>${esc(pp.attorney.role)}</small></dd>
+        </dl>
+        <h3 class="sub-h">What the ${crK(c.target)} credits pay for</h3>
+        <div class="budget"><div class="bg-ribbon">${c.budget.map(([k, n], i) => `<span class="bg-seg" style="--w:${(n / c.target * 100).toFixed(2)}%;--i:${i}" title="${esc(k)}"></span>`).join("")}</div>
           <div class="bg-rows">${c.budget.map(([k, n], i) => `<div><span class="bg-dot" style="--i:${i}"></span><span>${esc(k)}</span><b>${num(n)} cr</b></div>`).join("")}</div></div>
-          <p class="note">Brought by ${esc(c.ngo)}. Defendant: ${esc(c.defendant)}.</p></section>
-        <section class="card sc-sec"><h2>The crowd</h2><p class="sub">Backers follow the money. The waitlist and the sellers follow the news.</p>
-          <div class="sc-crowd"><div><b data-v="backers:${id}"></b><span>backers</span></div><div><b data-v="watching:${id}"></b><span>following now</span></div>
-          <div><b data-v="waitlist:${id}"></b><span>waiting to buy in</span></div><div><b data-v="sellers:${id}"></b><span>offering to sell</span></div></div>
-          <h3 class="sub-h">What this case has changed so far</h3><ul class="sc-impacts" data-part="impacts"></ul></section>
-      </div>
+        <details class="more"><summary>Background</summary><div class="more-in">
+          ${c.summary.map(p => `<p>${esc(p)}</p>`).join("")}
+          ${["plaintiff", "attorney"].map(k => `<p><b>${esc(pp[k].name)}.</b> ${esc(pp[k].bio)}</p>`).join("")}</div></details>
+      </section>
     </div></div>`;
 }
+function casePriceHTML(s){
+  const id = s.id;
+  if(s.status === "raising") return `<small>Funding round</small>
+    <div class="px-row"><span class="px-big" data-v="pctN:${id}"></span><span class="px-sub">funded · <b data-v="raised:${id}"></b></span></div>
+    <div class="meter"><i data-w="${id}"></i></div>`;
+  if(s.live) return `<small>Price</small>
+    <div class="px-row"><span class="px-big" data-v="price:${id}"></span><span class="chg" data-v="since:${id}"></span></div>
+    <div class="px-sub"><span title="What the odds alone say a credit is worth">Fair value <b data-v="model:${id}"></b></span>${hotHTML(s)}</div>`;
+  return `<small>Final payout</small>
+    <div class="px-row"><span class="px-big">${s.payout > 0 ? mult(s.payout) : "0×"}</span><span class="chg" data-sign="${s.payout > 0 ? "up" : "down"}">${esc(outcomeText(s))}</span></div>`;
+}
 function panelHTML(s){
-  const id = s.id, c = s.c, cash = snap.cash >= 1;
-  let top;
-  if(s.status === "raising") top = `<div class="sc-now"><div><span class="big" data-v="pctN:${id}"></span><small>of the round raised</small></div>
-      <div style="text-align:right"><b data-v="togo:${id}"></b> cr<small>still to raise</small></div></div>
-      <div class="meter" style="margin-top:12px"><i data-w="${id}"></i></div>
-      <div class="meter-nums"><span><b data-v="raised:${id}"></b></span><span><b data-v="backers:${id}"></b> backers</span></div>`;
-  else if(s.live) top = `<div><span class="big" data-v="price:${id}"></span><small class="sc-what">what a credit from the round is worth</small>
-      <div class="sc-now-row"><span class="sc-chg" data-v="since:${id}"></span><span>The odds alone say <b data-v="model:${id}"></b></span></div></div>
-      <div class="sc-hot" data-part="hot"></div>`;
-  else top = `<div class="sc-now"><div><span class="big">${s.status === "lost" ? "0×" : mult(s.payout)}</span>
-      <small>${s.status === "won" ? "paid per credit: the case was won" : s.status === "settled" ? "paid per credit: the case settled" : "the case was lost, and stakes paid nothing"}</small></div></div>`;
-  const mine = s.stake.invested ? `<div class="sc-mine"><h3>Your stake</h3><dl>
-      <dt>Put in</dt><dd data-v="invested:${id}"></dd>
-      ${s.hold ? `<dt>Worth now</dt><dd data-v="value:${id}"></dd>` : ""}
-      ${s.stake.returned ? `<dt>${s.ended ? "Paid out" : "Taken out"}</dt><dd data-v="returned:${id}"></dd>` : ""}
-      <dt>Gain or loss</dt><dd data-v="pl:${id}"></dd></dl></div>` : "";
-  const acts = s.status === "raising"
-    ? `<button class="btn primary" data-act="in"${cash ? "" : " disabled"}>Invest in the round</button>`
-    : s.live ? `<button class="btn primary" data-act="in"${cash ? "" : " disabled"}>${s.hold ? "Add more" : "Buy in"}</button>${s.hold ? `<button class="btn line" data-act="out">Sell</button>` : ""}`
-    : "";
-  return `${top}<div class="sc-score">${gauge(64, s.chance, c.impact)}<div class="sc-read">
-      <span><b data-v="chance:${id}"></b>chance to win</span><span><b>${c.impact}</b>social impact</span></div></div>
-    ${mine}<div class="sc-acts">${acts}<button class="btn line" data-act="share">${I.share}Share</button></div>`;
+  const id = s.id, cash = snap.cash >= 1;
+  let body;
+  if(s.hold) body = `<div class="pp-val"><b data-v="value:${id}"></b><em data-v="plpct:${id}"></em></div>
+    <dl class="pp-dl"><dt>Put in</dt><dd data-v="invested:${id}"></dd>${s.stake.returned ? `<dt>Taken out</dt><dd data-v="returned:${id}"></dd>` : ""}
+      <dt>Gain or loss</dt><dd data-v="pl:${id}"></dd></dl>`;
+  else if(s.stake.invested) body = `<div class="pp-val"><b>Closed</b></div>
+    <dl class="pp-dl"><dt>Put in</dt><dd>${cr(s.stake.invested)}</dd><dt>Got back</dt><dd>${cr(s.stake.returned)}</dd>
+      <dt>Gain or loss</dt><dd data-sign="${signOf(s.pl)}">${signed(s.pl)} cr</dd></dl>`;
+  else body = `<p class="pp-none">No position yet.</p>`;
+  const acts = s.ended ? "" : `<div class="pp-acts"><button class="btn primary" data-act="in"${cash ? "" : " disabled"}>Buy</button>${
+    s.status === "raising" ? "" : `<button class="btn line" data-act="out"${s.hold ? "" : " disabled"}>Sell</button>`}</div>`;
+  return `<h2>Your position</h2>${body}${acts}
+    <p class="pp-note">${s.ended ? esc(outcomeText(s)) : `Cash <b data-v="cash"></b>`}</p>
+    <button class="link sm pp-share" data-act="share">${I.share}Share this case</button>`;
+}
+function statsHTML(s){
+  const c = s.c, id = s.id, pc = v => Math.round(v * 100) + "%";
+  const lose = Math.max(0, 1 - s.odds.win - s.odds.settle);
+  const outcomes = s.ended ? "" : `<table class="otbl"><thead><tr><th>Outcome</th><th>Chance</th><th>Pays per credit</th></tr></thead><tbody>
+      <tr><td>Verdict</td><td>${pc(s.odds.win)}</td><td>${mult(c.winMult)}</td></tr>
+      <tr><td>Settlement</td><td>${pc(s.odds.settle)}</td><td>${mult(c.settleMult)}</td></tr>
+      <tr><td>Loss</td><td>${pc(lose)}</td><td>0×</td></tr></tbody></table>`;
+  return `<div class="kgrid">
+      <div><small>Win chance</small><b data-v="chanceP:${id}"></b></div>
+      <div><small>Impact score</small><b>${c.impact}<span class="of"> / 100</span></b></div>
+      <div><small>Funding goal</small><b>${crK(c.target)} cr</b></div>
+      <div><small>Backers</small><b data-v="backers:${id}"></b></div>
+      <div><small>Stage</small><b>${s.ended ? STATUS_WORD[s.status] : esc(SCENARIO.stages[s.stage])}</b></div>
+      <div><small>Early-exit fee</small><b>${Math.round(SCENARIO.exitDiscount * 100)}%</b></div>
+    </div>${outcomes}`;
 }
 function storyHTML(id){
-  const c = CASE[id], s = snap.cases[id], open = st.open[id];
+  const c = CASE[id], open = st.open[id];
   const rows = c.events.filter(e => st.fired[e.id]).reverse().map(e => `<li>${thumb(e, "st-thumb")}<div style="min-width:0">
       <div class="fd-meta"><span>${dateOf(e.t)}</span><span>· ${esc(e.tag)}</span></div>
       <h3>${esc(e.title)}</h3><p>${esc(e.body)}</p>${fxChips(e)}</div></li>`);
   if(open != null){
     const at = rows.length - c.events.filter(e => st.fired[e.id] && e.t < open).length;
     rows.splice(at, 0, `<li><div style="min-width:0"><div class="fd-meta"><span>${dateOf(open)}</span><span>· Funding</span></div>
-      <h3>${st.closedByMe[id] ? "You closed the round" : "Fully funded"}</h3><p>${num(c.target)} credits raised. The case starts.</p></div></li>`);
+      <h3>${st.closedByMe[id] ? "You closed the round" : "Fully funded"}: ${num(c.target)} cr</h3></div></li>`);
   }
-  const next = s.ended ? "" : `<div class="story-next"><i></i>${s.status === "raising" ? "Nothing happens until the round is full." : "More to come. It will appear here the moment it happens."}</div>`;
-  return next + (rows.length ? `<ul class="story">${rows.join("")}</ul>` : "");
+  return rows.length ? `<ul class="story">${rows.join("")}</ul>` : `<p class="none">No news yet.</p>`;
 }
 function tickCase(force, charts){
   const v = $("#v-case"), id = caseId;
   if(!id || !v.firstElementChild) return;
   const s = snap.cases[id], c = CASE[id], q = n => v.querySelector(`[data-part="${n}"]`);
-  patch(q("pill"), s.status + s.stage + Math.floor(s.pct * 100), () => pillHTML(s));
+  patch(q("pill"), s.status + s.stage, () => stagePill(s));
+  patch(q("price"), s.status + hotHTML(s), () => casePriceHTML(s));
   patch(q("panel"), [s.status, s.hold, Math.round(s.stake.invested), Math.round(s.stake.returned), snap.cash >= 1].join("/"), () => panelHTML(s));
-  patch(q("hot"), hotHTML(s), () => hotHTML(s));
   patch(q("stages"), s.stage + s.status, () => SCENARIO.stages.map((n, k) =>
     `<li class="${k < s.stage ? "done" : k === s.stage ? "now" : ""}">${esc(k === 5 && s.ended ? STATUS_WORD[s.status] : n)}</li>`).join(""));
   q("stages").classList.toggle("over", s.ended);
+  patch(q("stats"), s.status + s.stage + JSON.stringify(s.odds), () => statsHTML(s));
   patch(q("story"), c.events.filter(e => st.fired[e.id]).length + "/" + (st.open[id] != null) + s.status, () => storyHTML(id));
-  /* the site's own outcome fan, fed this case's odds and what is at stake:
-     your stake if you hold one, otherwise 100 credits put in today */
-  const p = s.status === "raising" ? 1 : s.price;
-  const amount = s.hold ? Math.max(1, Math.round(s.value)) : 100, units = s.hold ? s.stake.units : 100 / p;
-  patch(q("fanh"), s.hold ? "h" : "n", s.hold ? "How your stake could end" : "How 100 credits put in today could end");
-  patch(q("fan"), JSON.stringify(s.odds) + Math.round(units) + amount + s.status, () => {
-    if(s.ended) return `<p class="note" style="margin:0">${s.status === "lost" ? "It ended in a loss: every stake paid nothing." : `It is over: every credit in the round was paid ${mult(s.payout)}.`}</p>`;
-    const lose = Math.max(0, 1 - s.odds.win - s.odds.settle);
-    return outcomeFan({goal: c.target, outcomes: {win: s.odds.win, settle: s.odds.settle, lose,
-      winMult: c.winMult * units / amount, settleMult: c.settleMult * units / amount, note: ""}}, amount, {fmt: v => num(v) + " cr", word: "credit"});
-  });
   patch(q("impacts"), s.impacts.length + "", () => s.impacts.length
-    ? s.impacts.map(e => `<li>${I.spark}<span>${esc(e.impact)} <small style="color:var(--muted)">${dateOf(e.t)}</small></span></li>`).join("")
-    : `<li class="none">Nothing yet. Impact arrives with the evidence.</li>`);
+    ? s.impacts.map(e => `<li>${I.spark}<span>${esc(e.impact)} <small>${dateOf(e.t)}</small></span></li>`).join("")
+    : `<li class="none">None yet.</li>`);
   if(charts) drawChart(v.querySelector('[data-chart="case"]'), caseModel(id));
 }
 
-/* ============ portfolio ============ */
+/* ============ portfolio ============
+   An account summary, as a brokerage shows one: the value, the cash, the
+   positions, how it compares, and every trade. */
+const valueLegend = () => `<div class="legend"><span><i class="lg-you"></i>You</span><span><i class="lg-bench"></i>Even split</span></div>`;
 function renderPort(){
   $("#v-port").innerHTML = `<div class="pf">
-    <div class="pf-head"><h1>Your portfolio</h1><p>You started with ${num(START)} credits in ${dateOf(0)}.</p></div>
+    <h1 class="pg-title">Portfolio</h1>
     <div class="pf-tiles">
-      <div class="tile hero"><small>Total value</small><b data-v="total"></b><em data-v="ret"></em> <em style="color:var(--muted);font-weight:600">since the start</em></div>
-      <div class="tile"><small>Cash to invest</small><b data-v="cash"></b></div>
-      <div class="tile"><small>In cases now</small><b data-v="incases"></b></div>
+      <div class="tile hero"><small>Account value</small><b data-v="total"></b><em data-v="totalPl"></em></div>
+      <div class="tile"><small>Cash</small><b data-v="cash"></b></div>
+      <div class="tile"><small>Holdings</small><b data-v="incases"></b></div>
+      <div class="tile"><small>Paid out</small><b data-v="paid"></b></div>
     </div>
+    <section class="card"><div class="card-h"><h2>Account value</h2>${valueLegend()}${tableToggle("port")}</div>
+      <div class="lc" data-chart="port"></div></section>
     <div class="pf-grid">
-      <div>
-        <section class="card pf-sec"><div class="mk-head"><div><h2>Your value over time</h2><p class="sub" style="margin:2px 0 0">Against an even split across all three, held to the end. Yellow dots are your trades.</p></div>${tableToggle("port")}</div>
-          <div class="lc" data-chart="port" style="margin-top:8px"></div></section>
-        <section class="card pf-sec"><h2>Your stakes</h2><div class="pos" data-part="pos"></div></section>
-        <section class="card pf-sec"><h2>Where your credits are</h2><div data-part="alloc"></div></section>
-      </div>
-      <div>
-        <section class="card pf-sec"><h2>How you stack up</h2><p class="sub">Six simulated investors are playing the same ten minutes.</p><ol class="board" data-part="board"></ol></section>
-        <section class="card pf-sec"><h2>Your moves</h2><ul class="acts-list" data-part="acts"></ul></section>
-      </div>
-    </div></div>`;
+      <section class="card"><div class="card-h"><h2>Positions</h2></div><div class="pos" data-part="pos"></div><div class="pf-alloc" data-part="alloc"></div></section>
+      <section class="card"><div class="card-h"><h2>Standings</h2><small>vs ${PERSONAS.length} simulated investors</small></div><ol class="board" data-part="board"></ol></section>
+    </div>
+    <section class="card"><div class="card-h"><h2>Activity</h2></div><ul class="acts-list" data-part="acts"></ul></section>
+  </div>`;
 }
 const outcomeText = s => s.status === "won" ? `Won · paid ${mult(s.payout)}` : s.status === "settled" ? `Settled · paid ${mult(s.payout)}` : "Lost · paid nothing";
 function posHTML(){
-  return IDS.map(id => {
-    const s = snap.cases[id];
-    const right = !s.stake.invested ? `<div class="pos-r"><b>—</b><em style="color:var(--muted)">no stake</em></div>`
-      : `<div class="pos-r"><b data-v="${s.hold ? "value" : "returned"}:${id}"></b><em data-v="pl:${id}"></em></div>`;
-    const acts = s.ended ? "" : `<div class="pos-acts"><button class="btn line" data-act="in" data-id="${id}"${snap.cash >= 1 ? "" : " disabled"}>${s.status === "raising" ? "Invest" : s.hold ? "Add more" : "Buy in"}</button>${
-      s.hold && s.live ? `<button class="btn line" data-act="out" data-id="${id}">Sell</button>` : ""}</div>`;
-    return `<div class="pos-row" style="--cat:${ccol(id)}"><span class="dot"></span><div><h3><button data-open="${id}">${esc(short(id))}</button></h3>
-      <small><span data-v="pstat:${id}"></span>${s.stake.invested ? ` · put in ${cr(s.stake.invested)}` : ""}</small></div>${right}${acts}</div>`;
+  const ids = IDS.filter(id => snap.cases[id].stake.invested > 0);
+  if(!ids.length) return `<p class="none pad">No positions yet. <button class="link" data-go="home">See the cases</button></p>`;
+  return ids.map(id => {
+    const s = snap.cases[id], cash = snap.cash >= 1;
+    const acts = s.ended ? "" : `<button class="btn primary" data-act="in" data-id="${id}"${cash ? "" : " disabled"}>Buy</button>${s.live
+      ? `<button class="btn line" data-act="out" data-id="${id}"${s.hold ? "" : " disabled"}>Sell</button>` : ""}`;
+    return `<div class="pcase" data-open="${id}" style="--cat:${ccol(id)}">${logo(s.c)}
+      <div class="pcase-name"><h3><button data-open="${id}">${esc(short(id))}</button></h3><small data-v="pstat:${id}"></small></div>
+      <div class="pcase-num"><b data-v="${s.hold ? "value" : "returned"}:${id}"></b><small>${s.hold ? "Value" : s.ended ? "Paid out" : "Sold for"}</small></div>
+      <div class="pcase-num"><b data-v="pl:${id}"></b><small data-v="plpct:${id}"></small></div>
+      <div class="pcase-acts">${acts}</div></div>`;
   }).join("");
 }
 function allocHTML(){
   const parts = [{k: "cash", label: "Cash", v: snap.cash, color: ""}, ...IDS.map(id => ({k: id, label: short(id), v: snap.cases[id].value, color: ccol(id)}))];
   const tot = parts.reduce((a, p) => a + p.v, 0) || 1;
-  return `<div class="al" role="img" aria-label="${esc(parts.map(p => `${p.label} ${Math.round(p.v / tot * 100)}%`).join(", "))}">${parts.filter(p => p.v >= 1).map(p =>
+  return `<h3>Allocation</h3><div class="al" role="img" aria-label="${esc(parts.map(p => `${p.label} ${Math.round(p.v / tot * 100)}%`).join(", "))}">${parts.filter(p => p.v >= 1).map(p =>
       `<span class="${p.k === "cash" ? "cash" : ""}" style="flex-grow:${(p.v / tot).toFixed(4)};--cat:${p.color}"></span>`).join("")}</div>
     <div class="al-keys">${parts.map(p => `<span><i class="${p.k === "cash" ? "cash" : ""}" style="--cat:${p.color}"></i>${esc(p.label)} <b>${cr(p.v)}</b></span>`).join("")}</div>`;
 }
@@ -1195,16 +1122,17 @@ function boardRows(t){
   rows.push({name: "You", me: true, v: snap.total});
   return rows.sort((a, b) => b.v - a.v);
 }
+/* each simulated investor's line of thinking waits in the tooltip */
 function boardHTML(rows){
-  return rows.map(r => `<li class="${r.me ? "me" : ""}"><b>${esc(r.name)}${r.me ? "" : ` <span class="badge-sim">simulated</span>`}</b>
-    <small>${r.me ? "Your run" : `${esc(r.style)}: “${esc(r.says)}”`}</small>
+  return rows.map(r => `<li class="${r.me ? "me" : ""}"${r.says ? ` title="${esc(r.says)}"` : ""}><b>${esc(r.name)}</b>
+    <small>${r.me ? "Your run" : esc(r.style)}</small>
     <div class="bv"><b>${cr(r.v)}</b><em data-sign="${signOf((r.v - START) / START)}">${pctS((r.v - START) / START)}</em></div></li>`).join("");
 }
 function actsListHTML(){
   const xs = [...st.book.txns].reverse();
-  if(!xs.length) return `<li><span>No moves yet. Every case on the Cases page is open to invest.</span></li>`;
+  if(!xs.length) return `<li class="none">No trades yet.</li>`;
   return xs.map(x => { const out = x.kind === "round" || x.kind === "buy";
-    return `<li><span>${feedTx(x).html}<small>${dateOf(x.t)}</small></span><b data-sign="${out ? "flat" : x.credits > 0 ? "up" : "down"}">${
+    return `<li><small>${dateOf(x.t)}</small><span>${txText(x)}</span><b data-sign="${out ? "flat" : x.credits > 0 ? "up" : "down"}">${
       out ? MINUS + num(x.credits) : "+" + num(x.credits)} cr</b></li>`; }).join("");
 }
 function tickPort(force, charts){
@@ -1227,9 +1155,9 @@ const endOf = id => SimEngine.caseAt(M, id, LEN, st.open[id]);
 function renderEnd(){
   const v = $("#v-end");
   if(!st.done){
-    v.innerHTML = `<div class="rs"><div class="rs-head"><h1>Results</h1><p>The final tally lands when the clock runs out, in ${dateOf(LEN - 1)}.</p></div>
-      <section class="card rs-wait"><h2 data-part="wait"></h2><p>Until then, here is how everyone is doing right now.</p></section>
-      <section class="card pf-sec"><h2>Live standings</h2><p class="sub">Six simulated investors are playing the same ten minutes.</p><ol class="board" data-part="board"></ol></section></div>`;
+    v.innerHTML = `<div class="rs"><h1 class="pg-title">Results</h1>
+      <section class="card rs-wait"><small>Final results in</small><b data-part="wait"></b></section>
+      <section class="card"><div class="card-h"><h2>Standings</h2><small>vs ${PERSONAS.length} simulated investors</small></div><ol class="board" data-part="board"></ol></section></div>`;
     tickWait(true);
     return;
   }
@@ -1240,33 +1168,32 @@ function renderEnd(){
   const impacts = IDS.filter(id => st.book.pos[id] && st.book.pos[id].invested > 0).flatMap(id => endOf(id).impacts.map(e => ({id, e})));
   v.innerHTML = `<div class="rs">
     <section class="rs-hero">
-      <div class="rs-eyebrow">Four years in ten minutes · final result</div>
-      <div class="rs-big">${num(me)}<small>credits</small></div>
-      <p class="rs-line">From ${num(START)} at the start: <b>${pctS(snap.ret)}</b>. That beats <b>${Math.round(beat * 100)}%</b> of ${num(fin.length)} simulated investors who played the same ten minutes.</p>
+      <div class="rs-eyebrow">Final result</div>
+      <div class="rs-big">${num(me)}<small>cr</small></div>
+      <p class="rs-line"><b data-sign="${signOf(snap.ret)}">${pctS(snap.ret)}</b> on ${num(START)} credits · better than <b>${Math.round(beat * 100)}%</b> of ${num(fin.length)} simulated investors</p>
       ${badges.length ? `<div class="rs-chips">${badges.map(b => `<span>${I.spark}${esc(b)}</span>`).join("")}</div>` : ""}
-      <div class="rs-acts"><button class="btn primary" data-act="again">${I.replay}Run it again</button>
-        <button class="btn ghost" data-act="copy">Copy your result</button>
-        <a class="btn ghost" href="/">Open the live platform</a></div>
+      <div class="rs-acts"><button class="btn primary" data-act="again">${I.replay}Play again</button>
+        <button class="btn line" data-act="copy">Copy result</button>
+        <a class="btn line" href="/">Open LaunchJustice</a></div>
     </section>
     <div class="rs-grid">
       <div>
-        <section class="card pf-sec"><h2>Where you finished</h2><p class="sub">${num(fin.length)} simulated investors with ordinary habits, none of whom knew how a case would end. The dark bar is you.</p>
-          <div class="hg"></div></section>
-        <section class="card pf-sec"><h2>How each case ended</h2><div class="rs-cases">${IDS.map(caseEndHTML).join("")}</div></section>
-        <section class="card pf-sec"><div class="mk-head"><div><h2>Your value over time</h2><p class="sub" style="margin:2px 0 0">Against an even split held to the end.</p></div>${tableToggle("port")}</div>
-          <div class="lc" data-chart="port" style="margin-top:8px"></div></section>
+        <section class="card"><div class="card-h"><h2>Where you finished</h2><small>${num(fin.length)} simulated investors</small></div><div class="hg"></div></section>
+        <section class="card"><div class="card-h"><h2>How each case ended</h2></div><div class="rs-cases">${IDS.map(caseEndHTML).join("")}</div></section>
+        <section class="card"><div class="card-h"><h2>Account value</h2>${valueLegend()}${tableToggle("port")}</div>
+          <div class="lc" data-chart="port"></div></section>
       </div>
       <div>
-        <section class="card pf-sec"><h2>Leaderboard</h2><ol class="board">${boardHTML(boardRows(LEN))}</ol></section>
-        <section class="card pf-sec"><h2>Your calls</h2><ul class="moves">${movesOf(judged).join("")}</ul></section>
-        <section class="card pf-sec"><h2>What your credits changed</h2><ul class="sc-impacts">${impacts.length
-          ? impacts.map(({id, e}) => `<li>${I.spark}<span>${esc(e.impact)} <small style="color:var(--muted)">${esc(short(id))}</small></span></li>`).join("")
-          : `<li class="none">You didn't back a case this time, so none of this was yours.</li>`}</ul></section>
-        <section class="card pf-sec"><h2>What the ten minutes showed</h2><ul class="shows">
-          <li><b>A case starts only when it is fully funded.</b>Each round raised the whole litigation budget up front, so nobody had to stop a case halfway to ask for more.</li>
-          <li><b>Footage is how people follow a case.</b>Every interview, deposition and ruling arrived as a clip with a number attached: what it did to the odds.</li>
-          <li><b>Hype is not the odds.</b>The drug-data case raised fastest and lost. The waste plant's odds were better all along, which is why the site scores chance to win and social impact separately.</li>
-          <li><b>Late money buys a stake from someone leaving.</b>Buying in and selling to the waitlist here preview the planned exchange. They are not part of the site today.</li></ul></section>
+        <section class="card"><div class="card-h"><h2>Leaderboard</h2></div><ol class="board">${boardHTML(boardRows(LEN))}</ol></section>
+        <section class="card"><div class="card-h"><h2>Your calls</h2></div><ul class="moves">${movesOf(judged).join("")}</ul></section>
+        <section class="card"><div class="card-h"><h2>What your credits changed</h2></div><ul class="sc-impacts">${impacts.length
+          ? impacts.map(({id, e}) => `<li>${I.spark}<span>${esc(e.impact)} <small>${esc(short(id))}</small></span></li>`).join("")
+          : `<li class="none">You didn't back a case this time.</li>`}</ul></section>
+        <section class="card"><div class="card-h"><h2>Takeaways</h2></div><ul class="shows">
+          <li>A case starts only once it is fully funded.</li>
+          <li>Every ruling moves the price.</li>
+          <li>Hype is not the odds: the most-hyped case lost.</li>
+          <li>Trading stakes between backers is a preview. It isn't on the site yet.</li></ul></section>
       </div>
     </div></div>`;
   const hg = v.querySelector(".hg");
@@ -1275,16 +1202,16 @@ function renderEnd(){
 }
 async function copyResult(){
   const fin = crowdOf(), me = Math.round(snap.total), beat = Math.round(SimEngine.rankIn(fin, me) * 100);
-  const text = `I turned ${num(START)} credits into ${num(me)} (${pctS(snap.ret)}) in LaunchJustice Live, the ten-minute litigation-investing simulation. That beats ${beat}% of ${num(fin.length)} simulated investors.`;
+  const text = `I turned ${num(START)} credits into ${num(me)} (${pctS(snap.ret)}) in LaunchJustice Live, better than ${beat}% of ${num(fin.length)} simulated investors.`;
   try{ await navigator.clipboard.writeText(text); toast("Result copied."); }catch(e){ toast("Couldn't copy here."); }
 }
 function caseEndHTML(id){
   const s = endOf(id), p = st.book.pos[id];
   const mine = p && p.invested
-    ? `<div class="pos-r"><b data-sign="${signOf(p.returned - p.invested)}">${signed(p.returned - p.invested)} cr</b><em style="color:var(--muted)">put in ${cr(p.invested)}, got back ${cr(p.returned)}</em></div>`
-    : `<div class="pos-r"><b style="color:var(--muted)">No stake</b></div>`;
-  return `<div class="card rs-case" style="--cat:${ccol(id)}"><span class="rs-mark">${s.status !== "lost" ? I.check : I.cross}</span>
-    <div><h3><button data-open="${id}" class="link" style="text-decoration:none">${esc(short(id))}</button></h3><small>${esc(outcomeText(s))}</small></div>${mine}</div>`;
+    ? `<div class="rs-case-r"><b data-sign="${signOf(p.returned - p.invested)}">${signed(p.returned - p.invested)} cr</b><small>on ${cr(p.invested)}</small></div>`
+    : `<div class="rs-case-r"><small>No position</small></div>`;
+  return `<div class="rs-case" data-open="${id}" style="--cat:${ccol(id)}">${logo(s.c)}
+    <div><h3><button data-open="${id}">${esc(short(id))}</button></h3><small>${esc(outcomeText(s))}</small></div>${mine}</div>`;
 }
 /* how the crowd finished, one column per 200 credits, with yours dark */
 function histogram(fin, me, W=640){
@@ -1307,27 +1234,22 @@ function histogram(fin, me, W=640){
   g += `<text class="hg-you" x="${(x(mine) + barW / 2).toFixed(1)}" y="${(y(bins[mine]) - 7).toFixed(1)}" text-anchor="middle">You</text>`;
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="How ${num(fin.length)} simulated investors finished. You finished with ${num(me)} credits.">${g}</svg>`;
 }
-/* the person's best and worst calls, in plain words */
+/* the person's best and worst calls, a line each */
 function movesOf(judged){
   const out = [], li = (cls, icon, html) => `<li class="${cls}">${icon}<span>${html}</span></li>`;
-  const pays = m => m > 0 ? mult(m) : "nothing";
-  const what = x => x.kind === "round" ? `${cr(x.credits)} into the ${esc(short(x.c))} round` : `buying ${esc(short(x.c))} at ${mult(x.price)} in ${dateOf(x.t)}`;
-  const became = x => x.soldShare > .99 ? `You sold it for ${cr(x.realized)}` : x.soldShare > .01
-    ? `What you sold and what it paid came to ${cr(x.realized)}` : `It paid ${pays(x.final)}`;
+  const what = x => x.kind === "round" ? `${esc(short(x.c))} in the round` : `${esc(short(x.c))} at ${mult(x.price)}`;
   const buys = judged.filter(x => x.kind !== "sell"), sells = judged.filter(x => x.kind === "sell");
   const best = [...buys].sort((a, b) => b.gain - a.gain)[0];
-  if(best && best.gain > 0) out.push(li("good", I.up, `<b>Best call:</b> ${what(best)}. ${became(best)}: <b>${signed(best.gain)} cr</b>.`));
+  if(best && best.gain > 0) out.push(li("good", I.up, `<b>Best call:</b> ${what(best)}, <b>${signed(best.gain)} cr</b>`));
   sells.filter(x => x.gain > 0).sort((a, b) => b.gain - a.gain).slice(0, 1).forEach(x => out.push(li("good", I.check,
-    `<b>Got out in time:</b> sold ${esc(short(x.c))} at ${mult(x.price)} in ${dateOf(x.t)}. ${x.final > 0
-      ? `It went on to pay ${mult(x.final)}, so selling came out <b>${cr(x.gain)}</b> ahead.`
-      : `It went on to pay nothing, so selling saved <b>${cr(x.credits)}</b>.`}`)));
+    `<b>Good exit:</b> sold ${esc(short(x.c))} at ${mult(x.price)}, <b>${cr(x.gain)}</b> better than holding`)));
   const worst = [...buys].sort((a, b) => a.gain - b.gain)[0];
-  if(worst && worst.gain < 0) out.push(li("bad", I.down, `<b>Toughest call:</b> ${what(worst)}. ${became(worst)}: <b>${signed(worst.gain)} cr</b>.`));
+  if(worst && worst.gain < 0) out.push(li("bad", I.down, `<b>Toughest call:</b> ${what(worst)}, <b>${signed(worst.gain)} cr</b>`));
   sells.filter(x => x.gain < 0).sort((a, b) => a.gain - b.gain).slice(0, 1).forEach(x => out.push(li("bad", I.down,
-    `<b>Sold too soon:</b> ${esc(short(x.c))} at ${mult(x.price)}. It went on to pay ${mult(x.final)}, ${cr(-x.gain)} more than you got.`)));
-  IDS.filter(id => st.closedByMe[id]).forEach(id => out.push(li("info", I.check, `<b>You closed the ${esc(short(id))} round.</b> Your credits were the last it needed to start.`)));
-  if(st.reach) out.push(li("info", I.people, `<b>Your shares reached ${num(st.reach)} people.</b> In the real product, that is how a round fills.`));
-  if(!judged.length) out.push(li("info", I.info, `<b>You kept all ${num(START)} credits in cash.</b> Nothing lost, nothing changed.`));
+    `<b>Sold too soon:</b> ${esc(short(x.c))} at ${mult(x.price)}. It paid ${mult(x.final)}.`)));
+  IDS.filter(id => st.closedByMe[id]).forEach(id => out.push(li("info", I.check, `<b>You closed the ${esc(short(id))} round.</b>`)));
+  if(st.reach) out.push(li("info", I.people, `<b>Your shares reached ${num(st.reach)} people.</b>`));
+  if(!judged.length) out.push(li("info", I.info, `<b>You kept all ${num(START)} credits in cash.</b>`));
   return out;
 }
 function badgesOf(judged){
@@ -1341,7 +1263,7 @@ function badgesOf(judged){
 function tickWait(force){
   const v = $("#v-end"), w = v.querySelector('[data-part="wait"]');
   if(!w) return;
-  const txt = st.started ? `${mmss((LEN - st.t) / st.speed)} to go` : "The clock hasn't started yet";
+  const txt = st.started ? mmss((LEN - st.t) / st.speed) : "Clock not started";
   if(w.textContent !== txt) w.textContent = txt;
   const rows = boardRows(st.t);
   patch(v.querySelector('[data-part="board"]'), rows.map(r => r.name + Math.round(r.v)).join("|"), () => boardHTML(rows));
@@ -1358,8 +1280,7 @@ function showMoment(e, live){
       <button class="sound" data-sound aria-pressed="false">${I.muted}<span>Tap for sound</span></button></div>
     <div class="mo-body">
       <div class="mo-top"><span class="mo-live${live ? "" : " replay"}">${live ? "Breaking" : "Replay"}</span>
-        <span class="mo-case" style="--cat:${ccol(id)}"><span class="dot"></span>${esc(short(id))}</span><span>${dateOf(e.t)}</span></div>
-      <div class="mo-tag">${esc(e.tag)}</div>
+        <span class="mo-case"><span class="dot"></span>${esc(short(id))}</span><span>${dateOf(e.t)} · ${esc(e.tag)}</span></div>
       <h3 class="mo-title">${esc(e.title)}</h3>
       <p class="mo-text">${esc(e.body)}</p>
       ${fxChips(e)}
@@ -1397,7 +1318,7 @@ $("#moment").addEventListener("click", ev => {
   if(k === "close-round"){
     const need = Math.ceil(c.target - snap.cases[id].raised);
     const tx = invest(id, Math.min(need, snap.cash));
-    if(tx && !st.closedByMe[id]) toast(`${I.check}<span>You put ${cr(tx.credits)} into the ${esc(short(id))} round.</span>`);
+    if(tx && !st.closedByMe[id]) toast(`${I.check}<span>Bought <b>${cr(tx.credits)}</b> of ${esc(short(id))} in the round.</span>`);
   }
 });
 function tickMoment(){
@@ -1406,20 +1327,20 @@ function tickMoment(){
   const id = e.c, s = snap.cases[id], c = CASE[id], q = n => el.querySelector(`[data-part="${n}"]`);
   const need = Math.max(0, Math.ceil(c.target - s.raised)), cash = snap.cash >= 1;
   const closing = e.closeRound && s.status === "raising";
-  patch(q("mo-round"), closing ? "r" + need + (snap.cash >= need) : "-", () => closing
-    ? `<div class="mo-close-round"><b>${num(need)} credits to go.</b><div class="meter"><i data-w="${id}"></i></div>
-       <span style="font-size:12.5px;color:var(--muted)">${snap.cash >= need ? "Put them in and the case starts now." : `You have ${cr(snap.cash)}, enough to bring it closer.`}</span></div>` : "");
+  patch(q("mo-round"), closing ? "r" + need : "-", () => closing
+    ? `<div class="mo-close-round"><b>${num(need)} cr to go</b><div class="meter"><i data-w="${id}"></i></div></div>` : "");
   patch(q("mo-mine"), s.hold ? "h" : s.stake.invested ? "p" + Math.round(s.stake.returned) : "n", () => s.hold
-    ? `Your stake is worth <b data-v="value:${id}"></b> <em data-v="plpct:${id}" style="font-style:normal;font-weight:700"></em>`
-    : s.stake.invested ? `You put in <b>${cr(s.stake.invested)}</b> and got back <b>${cr(s.stake.returned)}</b>.` : "");
+    ? `Your position <b data-v="value:${id}"></b> <em data-v="plpct:${id}"></em>`
+    : s.stake.invested ? `Closed: <b data-sign="${signOf(s.pl)}">${signed(s.pl)} cr</b>` : "");
   patch(q("mo-acts"), [s.status, s.hold, cash, playing, closing && need, snap.cash >= need].join("/"), () => {
-    const resume = !playing && st.started && !st.done ? `<button class="btn primary" data-mo="go">${I.play}Continue</button>` : "";
+    const resume = !playing && st.started && !st.done ? `<button class="btn line" data-mo="go">${I.play}Continue</button>` : "";
+    const open = `<button class="btn line" data-mo="case">View case</button>`;
     if(s.status === "raising") return (closing && cash
-      ? `<button class="btn primary" data-mo="close-round">${snap.cash >= need ? `Close the round · ${num(need)} cr` : `Put in ${cr(snap.cash)}`}</button>`
-      : `<button class="btn primary" data-mo="in"${cash ? "" : " disabled"}>Invest</button>`) + resume + `<button class="btn line" data-mo="case">The case</button>`;
-    if(s.live) return `<button class="btn primary" data-mo="in"${cash ? "" : " disabled"}>${s.hold ? "Add more" : "Buy in"}</button>${
-      s.hold ? `<button class="btn line" data-mo="out">Sell</button>` : ""}${resume}<button class="btn line" data-mo="case">The case</button>`;
-    return `${resume}<button class="btn line" data-mo="port">Your portfolio</button><button class="btn line" data-mo="case">The case</button>`;
+      ? `<button class="btn primary" data-mo="close-round">${snap.cash >= need ? `Close the round · ${num(need)} cr` : `Buy ${cr(snap.cash)}`}</button>`
+      : `<button class="btn primary" data-mo="in"${cash ? "" : " disabled"}>Buy</button>`) + resume + open;
+    if(s.live) return `<button class="btn primary" data-mo="in"${cash ? "" : " disabled"}>Buy</button>${
+      s.hold ? `<button class="btn line" data-mo="out">Sell</button>` : ""}${resume}${open}`;
+    return `${resume}<button class="btn line" data-mo="port">Portfolio</button>${open}`;
   });
   paint(el);
 }
@@ -1437,7 +1358,7 @@ function openPlayer(e){
   const el = $("#splayer"), c = CASE[e.c];
   if(clip.slot) unmountClip();
   el.innerHTML = `<button class="spl-close" aria-label="Close">${I.x}</button>
-    ${st.set.pauseClips && playing ? `<span class="spl-paused">${I.pause}The clock waits while you watch</span>` : ""}
+    ${st.set.pauseClips && playing ? `<span class="spl-paused">${I.pause}Clock paused</span>` : ""}
     <div class="spl-frame" style="--cat:${ccol(e.c)}">${slotHTML(c, e.embed)}<button class="sound" data-sound aria-pressed="false">${I.muted}<span>Tap for sound</span></button></div>
     <div class="spl-info">${metaRow(e.c, e.t, `<span>· ${esc(e.tag)}</span>`)}<h2>${esc(e.title)}</h2><p>${esc(e.body)}</p></div>`;
   el.classList.add("on");
@@ -1470,17 +1391,21 @@ function openSheet(html, kind, tickFn){
   sheetOpen = true; sheetKind = kind; sheetTick = tickFn || null;
   setTimeout(() => { const f = sheet.querySelector("input:not([type=range]),button:not([disabled])"); f && f.focus(); }, 220);
 }
-function closeSheet(){
+/* Escape or the scrim hands focus back to whatever opened the sheet. A
+   completed trade does not: the presenter's next Space should play the
+   clock, not reopen the ticket from the Buy button that opened it. */
+function closeSheet(done){
   if(!sheetOpen) return;
   sheet.classList.remove("on"); scrim.classList.remove("on");
   sheetOpen = false; sheetTick = null; sheetKind = "";
-  lastFocus && lastFocus.focus && lastFocus.focus();
+  if(done === true){ const a = document.activeElement; if(a && a.blur) a.blur(); }
+  else if(lastFocus && lastFocus.focus) lastFocus.focus();
 }
 scrim.addEventListener("click", closeSheet);
 
-/* Investing, buying in and selling are one sheet, and its numbers stay
-   live while it is open: the clock does not stop for anyone, so the price
-   on the button is the price you get. */
+/* Buying and selling are one order ticket, and its numbers stay live while
+   it is open: the clock does not stop for anyone, so the price on the
+   button is the price you get. */
 function openTrade(id, mode){
   const c = CASE[id];
   let amt = 0, share = .5, custom = false, shape = "";
@@ -1490,14 +1415,14 @@ function openTrade(id, mode){
     const out = sheet.querySelector('[data-q="out"]');
     if(!out) return;
     const p = s.status === "raising" ? 1 : s.price, units = amt / p, lose = Math.max(0, 1 - s.odds.win - s.odds.settle);
-    const rows = [["win", "Won", units * c.winMult, s.odds.win], ["settle", "Settled", units * c.settleMult, s.odds.settle], ["lose", "Lost", 0, lose]];
+    const rows = [["win", "Wins", units * c.winMult, s.odds.win], ["settle", "Settles", units * c.settleMult, s.odds.settle], ["lose", "Loses", 0, lose]];
     out.innerHTML = `<div class="ostrip">${rows.map(([k, l, v, pr]) => `<div class="os os-${k}"><span class="os-bar" style="--p:${Math.round(pr * 100)}%"></span>
-      <span class="os-l">${l}</span><span class="os-p">${Math.round(pr * 100)}% likely</span><b class="os-v">${cr(v)}</b>
+      <span class="os-l">${l}</span><span class="os-p">${Math.round(pr * 100)}%</span><b class="os-v">${cr(v)}</b>
       <span class="os-g">${amt && v ? pctS(v / amt - 1) : ""}</span></div>`).join("")}</div>`;
     sheet.querySelectorAll('[data-q="price"]').forEach(n => n.textContent = mult(p));
     sheet.querySelector('[data-q="left"]').textContent = cr(snap.cash - amt);
     const go1 = $("#tGo");
-    go1.textContent = amt ? (s.status === "raising" ? `Invest ${cr(amt)}` : `Buy for ${cr(amt)}`) : "Choose an amount";
+    go1.textContent = amt ? `Buy for ${cr(amt)}` : "Choose an amount";
     go1.disabled = !amt;
   };
   const draw = () => {
@@ -1507,23 +1432,19 @@ function openTrade(id, mode){
     const raising = s.status === "raising";
     const max = Math.max(0, Math.floor(Math.min(snap.cash, raising ? c.target - s.raised : Infinity)));
     amt = Math.min(custom ? amt : (amt || Math.min(250, max)), max);
-    openSheet(`<h2 id="sheetTitle">${s.ended ? "This case is over" : raising ? "Invest in the round" : s.hold ? "Add to your stake" : "Buy into this case"}</h2>
-      <p class="sub">${esc(c.head)}</p>
+    openSheet(`<h2 id="sheetTitle">${s.ended ? `${esc(short(id))} has ended` : `Buy ${esc(short(id))}`}</h2>
       ${s.ended ? `<p class="hint">There is nothing left to buy.</p>` : `
-      <div class="lockstrip">${I.info}<span>${raising
-        ? `The round is <b>${Math.floor(s.pct * 100)}% full</b>. The case starts the moment it fills. Every credit in the round is one credit's share of whatever backers are paid.`
-        : `This case is <b>fully funded</b>, so new money doesn't go into it. You buy out a backer who wants to leave, at today's price of <b data-q="price">${mult(s.price)}</b> a credit.`}</span></div>
-      <label class="f" id="amtLbl">How many credits</label>
-      <div class="amts" role="group" aria-labelledby="amtLbl">${[100, 250, 500].map(a => `<button data-a="${a}" aria-pressed="false"${a > max ? " disabled" : ""}>${a}</button>`).join("")}<button data-a="max" aria-pressed="false"${max < 1 ? " disabled" : ""}>All ${num(max)}</button></div>
+      <p class="sub">${raising ? `Funding round, <b>${Math.floor(s.pct * 100)}%</b> funded` : "From a backer who is selling"}</p>
+      <label class="f" id="amtLbl">Amount</label>
+      <div class="amts" role="group" aria-labelledby="amtLbl">${[100, 250, 500].map(a => `<button data-a="${a}" aria-pressed="false"${a > max ? " disabled" : ""}>${a}</button>`).join("")}<button data-a="max" aria-pressed="false"${max < 1 ? " disabled" : ""}>Max</button></div>
       <input class="rng" type="range" min="0" max="${max}" step="10" value="${amt}" aria-label="Credits">
       <div class="money"><span>cr</span><input class="inp" id="tAmt" inputmode="numeric" value="${amt || ""}" aria-label="Credits to put in" style="padding-left:40px"></div>
-      <div class="f" style="margin-bottom:8px">If the case ends&hellip;</div>
+      <div class="f">If the case&hellip;</div>
       <div data-q="out"></div>
-      <dl class="qt"><dt>Price per credit</dt><dd data-q="price">${mult(raising ? 1 : s.price)}</dd><dt>Cash left after</dt><dd data-q="left"></dd></dl>
-      ${raising ? "" : `<div class="match"><span class="av">${esc(pick(TICKER_NAMES).charAt(0))}</span><span><b>${num(s.crowd.sellers)} backers</b> are offering stakes right now. You are matched with the next in line.</span></div>`}
+      <dl class="qt"><dt>Price per credit</dt><dd data-q="price">${mult(raising ? 1 : s.price)}</dd><dt>Cash after</dt><dd data-q="left"></dd></dl>
       <div class="err" id="tErr"></div>
-      <button class="btn primary" id="tGo"></button>`}
-      <p class="hint">Virtual credits in a simulation. Nothing here is advice.</p>`, "trade", live);
+      <button class="btn primary" id="tGo"></button>
+      <p class="hint">Simulation · virtual credits</p>`}`, "trade", live);
     if(s.ended) return;
     const inp = $("#tAmt"), rng = sheet.querySelector(".rng");
     const set = (v, src) => {
@@ -1537,24 +1458,23 @@ function openTrade(id, mode){
     rng.oninput = () => { custom = true; set(rng.value, "rng"); };
     inp.oninput = () => { inp.value = inp.value.replace(/\D/g, "").slice(0, 6); custom = true; set(inp.value, "inp"); };
     $("#tGo").onclick = () => {
-      if(!(amt >= 1)){ $("#tErr").textContent = "Choose how many credits."; return; }
+      if(!(amt >= 1)){ $("#tErr").textContent = "Choose an amount."; return; }
       const tx = invest(id, amt);
       if(!tx){ $("#tErr").textContent = snap.cases[id].ended ? "This case has just ended." : "That didn't go through. Try a smaller amount."; return; }
-      closeSheet();
-      if(tx.kind === "round" && !st.closedByMe[id]) toast(`${I.check}<span><b>${cr(tx.credits)}</b> into the ${esc(short(id))} round.</span>`);
-      else if(tx.kind === "buy") toast(`${I.check}<span>Bought <b>${cr(tx.credits)}</b> of ${esc(short(id))} at ${mult(tx.price)} from ${esc(tx.with.name)}.</span>`);
+      closeSheet(true);
+      if(tx.kind === "round" && !st.closedByMe[id]) toast(`${I.check}<span>Bought <b>${cr(tx.credits)}</b> of ${esc(short(id))} in the round.</span>`);
+      else if(tx.kind === "buy") toast(`${I.check}<span>Bought <b>${cr(tx.credits)}</b> of ${esc(short(id))} at ${mult(tx.price)}.</span>`);
     };
     set(amt);
   };
   const drawSell = s => {
-    openSheet(`<h2 id="sheetTitle">Sell your stake</h2><p class="sub">${esc(c.head)}</p>
-      ${!s.live || !s.hold ? `<p class="hint">${s.ended ? "This case is over: there is nothing left to sell." : "You don't hold a stake in this case."}</p>` : `
-      <div class="lockstrip">${I.info}<span>A preview of the planned exchange. Your stake goes to someone on the waitlist at the market price, less a ${Math.round(SCENARIO.exitDiscount * 100)}% discount for leaving early.</span></div>
-      <label class="f" id="shLbl">How much of it</label>
-      <div class="amts" role="group" aria-labelledby="shLbl" style="grid-template-columns:repeat(3,1fr)">${[[.25, "A quarter"], [.5, "Half"], [1, "All of it"]].map(([v, l]) => `<button data-s="${v}" aria-pressed="${v === share}">${l}</button>`).join("")}</div>
+    openSheet(`<h2 id="sheetTitle">Sell ${esc(short(id))}</h2>
+      ${!s.live || !s.hold ? `<p class="hint">${s.ended ? "This case has ended." : "You don't own this case."}</p>` : `
+      <p class="sub">To a buyer on the waitlist, less a ${Math.round(SCENARIO.exitDiscount * 100)}% early-exit fee</p>
+      <label class="f" id="shLbl">Amount</label>
+      <div class="amts" role="group" aria-labelledby="shLbl" style="grid-template-columns:repeat(3,1fr)">${[[.25, "25%"], [.5, "50%"], [1, "All"]].map(([v, l]) => `<button data-s="${v}" aria-pressed="${v === share}">${l}</button>`).join("")}</div>
       <dl class="qt"><dt>Market price</dt><dd data-q="mkt"></dd><dt>You get per credit</dt><dd data-q="bid"></dd><span class="sep"></span>
-        <dt>You'd receive</dt><dd data-q="get"></dd><dt>Those credits cost you</dt><dd data-q="cost"></dd></dl>
-      <div class="match"><span class="av">${esc(pick(TICKER_NAMES).charAt(0))}</span><span><b data-q="wl"></b> people are on the waitlist for this case.</span></div>
+        <dt>Proceeds</dt><dd data-q="get"></dd><dt>Cost basis</dt><dd data-q="cost"></dd></dl>
       <button class="btn primary" id="tGo" style="margin-top:14px"></button>`}`, "trade", live);
     if(!s.live || !s.hold) return;
     sheet.querySelectorAll("[data-s]").forEach(b => b.onclick = () => {
@@ -1565,8 +1485,8 @@ function openTrade(id, mode){
     $("#tGo").onclick = () => {
       const tx = sell(id, share);
       if(!tx){ toast("That didn't go through."); return; }
-      closeSheet();
-      toast(`${I.check}<span>Sold for <b>${cr(tx.credits)}</b> to ${esc(tx.with.name)} on the waitlist.</span>`);
+      closeSheet(true);
+      toast(`${I.check}<span>Sold for <b>${cr(tx.credits)}</b>.</span>`);
     };
     quote();
   };
@@ -1577,9 +1497,7 @@ function openTrade(id, mode){
     sheet.querySelector('[data-q="mkt"]').textContent = mult(s.price);
     sheet.querySelector('[data-q="bid"]').textContent = mult(s.bid);
     get1.textContent = cr(get);
-    const costEl = sheet.querySelector('[data-q="cost"]');
-    costEl.textContent = cr(cost);
-    sheet.querySelector('[data-q="wl"]').textContent = num(s.crowd.waitlist);
+    sheet.querySelector('[data-q="cost"]').textContent = cr(cost);
     $("#tGo").textContent = `Sell for ${cr(get)}`;
   };
   /* a round filling or a case ending under an open sheet changes what the
@@ -1589,16 +1507,16 @@ function openTrade(id, mode){
 }
 
 function openSettings(){
-  openSheet(`<h2 id="sheetTitle">Run settings</h2><p class="sub">For whoever is presenting.</p>
-    <label class="f">How long the run takes</label>
+  openSheet(`<h2 id="sheetTitle">Presenter settings</h2>
+    <label class="f">Run length</label>
     <div class="speeds">${SPEEDS.map(s => `<button data-sp="${s}" aria-pressed="${s === st.speed}">${speedLabel(s)}<small>${mmss(LEN / s)}</small></button>`).join("")}</div>
-    <div class="set-row"><div><b>Pause for big moments</b><small>Stop the clock when a breaking card slides in, until you press Continue.</small></div>
-      <input type="checkbox" class="tgl" id="setMom"${st.set.pauseMoments ? " checked" : ""} aria-label="Pause for big moments"></div>
-    <div class="set-row"><div><b>Pause while a clip plays</b><small>Watching full screen holds the clock, so nobody misses a ruling.</small></div>
-      <input type="checkbox" class="tgl" id="setClip"${st.set.pauseClips ? " checked" : ""} aria-label="Pause while a clip plays"></div>
-    <div class="set-row"><div><b>Skip ahead</b><small data-q="next"></small></div><button class="btn ghost" id="setNext" style="width:auto;padding:10px 14px">${I.next}Next</button></div>
-    <button class="btn ghost" id="setKeys" style="width:100%;margin-top:12px">${I.key}Keyboard shortcuts</button>
-    <button class="btn ghost" id="setRestart" style="width:100%;margin-top:8px">${I.replay}Restart the simulation</button>`, "settings", () => {
+    <div class="set-row"><div><b>Pause on big news</b><small>The clock waits until you press Continue.</small></div>
+      <input type="checkbox" class="tgl" id="setMom"${st.set.pauseMoments ? " checked" : ""} aria-label="Pause on big news"></div>
+    <div class="set-row"><div><b>Pause during clips</b><small>A full-screen clip holds the clock.</small></div>
+      <input type="checkbox" class="tgl" id="setClip"${st.set.pauseClips ? " checked" : ""} aria-label="Pause during clips"></div>
+    <div class="set-row"><div><b>Skip ahead</b><small data-q="next"></small></div><button class="btn line" id="setNext" style="width:auto;padding:9px 14px">${I.next}Next</button></div>
+    <button class="btn line" id="setKeys" style="width:100%;margin-top:12px">${I.key}Keyboard shortcuts</button>
+    <button class="btn line" id="setRestart" style="width:100%;margin-top:8px">${I.replay}Restart</button>`, "settings", () => {
       const n = upcoming(), el = sheet.querySelector('[data-q="next"]');
       const t = st.done ? "The run is over." : n ? `Next: ${dateOf(n.t)}, ${n.label}` : "Straight to the end.";
       if(el && el.textContent !== t) el.textContent = t;
@@ -1606,24 +1524,24 @@ function openSettings(){
   sheet.querySelectorAll("[data-sp]").forEach(b => b.onclick = () => setSpeed(+b.dataset.sp));
   $("#setMom").onchange = e => { st.set.pauseMoments = e.target.checked; save(); };
   $("#setClip").onchange = e => { st.set.pauseClips = e.target.checked; save(); };
-  $("#setNext").onclick = () => { closeSheet(); skip(); };
+  $("#setNext").onclick = () => { closeSheet(true); skip(); };
   $("#setKeys").onclick = openKeys;
   $("#setRestart").onclick = openRestart;
   sheetTick();
 }
 function openKeys(){
-  openSheet(`<h2 id="sheetTitle">Keyboard shortcuts</h2><p class="sub">Handy when presenting from a laptop.</p>
-    <ul class="keys"><li><kbd>Space</kbd>Play or pause the clock</li><li><kbd>N</kbd>Skip to the next event</li>
-    <li><kbd>1</kbd><kbd>2</kbd><kbd>4</kbd>Run at 1×, 2× or 4×, and <kbd>0</kbd> for half speed</li><li><kbd>C</kbd>The cases</li><li><kbd>P</kbd>Your portfolio</li>
-    <li><kbd>Esc</kbd>Close whatever is open</li></ul>
+  openSheet(`<h2 id="sheetTitle">Keyboard shortcuts</h2>
+    <ul class="keys"><li><kbd>Space</kbd>Play or pause</li><li><kbd>N</kbd>Next event</li>
+    <li><kbd>1</kbd><kbd>2</kbd><kbd>4</kbd>Speed, and <kbd>0</kbd> for half</li><li><kbd>C</kbd>Cases</li><li><kbd>P</kbd>Portfolio</li>
+    <li><kbd>Esc</kbd>Close</li></ul>
     <button class="btn primary" id="kOk" style="margin-top:16px">Got it</button>`, "keys");
   $("#kOk").onclick = closeSheet;
 }
 function openRestart(){
-  openSheet(`<h2 id="sheetTitle">Start again?</h2><p class="sub">The clock goes back to ${dateOf(0)} and you get ${num(START)} fresh credits. Your run settings stay as they are.</p>
-    <button class="btn primary" id="rGo">${I.replay}Restart the simulation</button>
-    <button class="btn ghost" id="rNo" style="width:100%;margin-top:8px">Keep going</button>`, "restart");
-  $("#rGo").onclick = () => { closeSheet(); restart(); toast("<span>Fresh start. The rounds are open.</span>"); };
+  openSheet(`<h2 id="sheetTitle">Start over?</h2><p class="sub">Back to ${dateOf(0)} with ${num(START)} credits.</p>
+    <button class="btn primary" id="rGo">${I.replay}Restart</button>
+    <button class="btn line" id="rNo" style="width:100%;margin-top:8px">Cancel</button>`, "restart");
+  $("#rGo").onclick = () => { closeSheet(true); restart(); toast("<span>Fresh start. The rounds are open.</span>"); };
   $("#rNo").onclick = closeSheet;
 }
 
@@ -1645,11 +1563,15 @@ function go(v){
 }
 $$("#nav button[data-go]").forEach(b => b.addEventListener("click", () => go(b.dataset.go)));
 
-/* one handler for everything clickable in the views and the sidebar */
+/* one handler for everything clickable in the views. A whole case row
+   opens its case, so a press on a disabled button in it does nothing. */
 function act(e){
+  if(e.target.closest("button:disabled")) return;
   const cl = e.target.closest("[data-clip]");
   if(cl){ const ev = EVENTS.find(x => x.id === cl.dataset.clip); if(ev) openPlayer(ev); return; }
   if(e.target.closest("[data-back]")){ go(prevView || "home"); return; }
+  const g = e.target.closest("[data-go]");
+  if(g){ go(g.dataset.go); return; }
   const a = e.target.closest("[data-act]");
   if(a){
     const id = a.dataset.id || caseId;
@@ -1671,7 +1593,6 @@ function act(e){
   if(o) openCase(o.dataset.open);
 }
 $(".panes").addEventListener("click", act);
-$("#navWallet").addEventListener("click", act);
 
 document.addEventListener("keydown", e => {
   const tag = (e.target.tagName || "").toLowerCase();
